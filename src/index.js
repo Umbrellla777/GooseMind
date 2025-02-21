@@ -236,4 +236,53 @@ async function handleCallback(ctx, action) {
 
                     const newText = 
                         `Текущие настройки Полуумного Гуся:\n` +
-                        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n`
+                        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+                        `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+                        `Маты: ${status}`;
+
+                    await ctx.editMessageText(newText, { reply_markup: newKeyboard });
+                    await ctx.answerCbQuery(`Маты ${status}`);
+                } catch (error) {
+                    if (error.description?.includes('message is not modified')) {
+                        await ctx.answerCbQuery(`Маты ${status}`);
+                    } else {
+                        throw error;
+                    }
+                }
+                break;
+
+            case 'clear_db':
+                await ctx.answerCbQuery('Очистка базы данных...');
+                await messageHandler.clearDatabase();
+                await ctx.reply('✅ База данных успешно очищена!');
+                break;
+
+            default:
+                await ctx.answerCbQuery('Неизвестное действие');
+        }
+    } catch (error) {
+        console.error('Error processing callback:', error);
+        await ctx.answerCbQuery('Произошла ошибка при обработке запроса');
+    }
+}
+
+// Обработчик кнопок с быстрым ответом
+bot.on('callback_query', handleCallback);
+
+// Запуск бота
+bot.launch();
+
+// Добавим обработку разрыва соединения
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down...');
+    bot.telegram.getMe().then(() => {
+        process.exit(0);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down...');
+    bot.telegram.getMe().then(() => {
+        process.exit(0);
+    });
+});

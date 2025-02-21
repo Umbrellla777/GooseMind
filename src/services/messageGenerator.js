@@ -129,7 +129,26 @@ class MessageGenerator {
         let relevance = 0;
         const wordStem = this.stemmer.stem(word);
         
-        // Базовая релевантность из существующего кода
+        // Список забавных слов с высоким приоритетом
+        const funnyWords = [
+            'котик', 'хомяк', 'единорог', 'пельмени', 'печеньки',
+            'танцует', 'хихикает', 'мечтает', 'летает',
+            'весёлый', 'пушистый', 'загадочный', 'космический',
+            'мемы', 'смайлики', 'программист', 'чайник'
+        ];
+        
+        // Добавляем случайные забавные слова
+        const randomFunnyWords = funnyWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2);
+        
+        // Повышаем релевантность забавных слов
+        if (funnyWords.includes(word.toLowerCase()) || 
+            randomFunnyWords.includes(word.toLowerCase())) {
+            relevance += 3;
+        }
+
+        // Базовая релевантность
         if (inputStems.includes(wordStem)) {
             relevance += 2;
         }
@@ -158,17 +177,15 @@ class MessageGenerator {
         const sentence = [];
         const words = Array.from(wordMap.keys());
         
-        // Уменьшаем минимальный порог слов
         if (words.length < 2) {
             return this.generateFallbackSentence();
         }
 
-        // Начинаем предложение со случайного слова, меньше опираясь на релевантность
         let currentWord = this.selectStartWord(words, wordMap);
         sentence.push(currentWord);
 
-        // Генерируем случайную длину от 2 до 30 слов
-        const targetLength = Math.floor(Math.random() * 28) + 2;
+        // Уменьшаем длину до 3-8 слов
+        const targetLength = Math.floor(Math.random() * 5) + 3;
         let repeatedWords = 0;
         const maxRepeats = 1; // Запрещаем повторения слов
 
@@ -266,9 +283,14 @@ class MessageGenerator {
         // Обновляем контекст для данного чата
         this.updateContext(message);
 
-        // Получаем слова с учетом контекста
-        const wordMap = await this.getWordsFromDatabase(message.chat.id, message.text);
+        // Анализируем входящее сообщение
+        const keywords = await this.gemini.analyzeMessage(message.text);
         
+        // Добавляем ключевые слова в релевантность
+        const wordMap = await this.getWordsFromDatabase(message.chat.id, 
+            message.text + ' ' + keywords.join(' ')
+        );
+
         // Если база пуста - используем заготовленные ответы
         if (wordMap.size === 0) {
             return this.generateFallbackResponse(message.text);

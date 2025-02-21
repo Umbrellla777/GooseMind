@@ -7,15 +7,36 @@ class GeminiService {
         this.model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     }
 
+    async analyzeMessage(text) {
+        try {
+            const prompt = `Проанализируй сообщение и выдели 3-4 ключевых слова или темы. 
+                           Отвечай только списком слов через запятую.
+                           Пример ответа: "котики, программирование, веселье"
+                           Сообщение: "${text}"`;
+
+            const result = await this.model.generateContent({
+                contents: [{
+                    parts: [{ text: prompt }]
+                }]
+            });
+
+            let keywords = result.response.text()
+                .trim()
+                .replace(/^["']|["']$/g, '')
+                .split(',')
+                .map(word => word.trim())
+                .filter(word => word.length > 0);
+
+            return keywords;
+        } catch (error) {
+            console.error('Gemini analysis error:', error);
+            return [];
+        }
+    }
+
     async improveText(text) {
         try {
-            const prompt = `Исправь только грамматические формы слов в следующем предложении для их логической связи. 
-                          Не добавляй новых слов, не меняй порядок слов и не удаляй слова: "${text}"
-                          Пример:
-                          Вход: "кот гулять улица дом"
-                          Выход: "кот гуляет по улице у дома"
-                          Вход: "я любить программирование компьютер"
-                          Выход: "я люблю программирование на компьютере"`;
+            const prompt = `Исправь грамматику: "${text}"`;
 
             const result = await this.model.generateContent({
                 contents: [{
@@ -25,10 +46,17 @@ class GeminiService {
                 }]
             });
 
-            return result.response.text().trim().replace(/^["']|["']$/g, '');
+            let response = result.response.text()
+                .trim()
+                .replace(/^["']|["']$/g, '')
+                .replace(/^Вот исправленный вариант.*?:/i, '')
+                .replace(/^Исправленное предложение.*?:/i, '')
+                .trim();
+            
+            return response;
         } catch (error) {
             console.error('Gemini API error:', error);
-            return text; // Возвращаем оригинальный текст в случае ошибки
+            return text;
         }
     }
 }

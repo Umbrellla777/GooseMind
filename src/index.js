@@ -112,12 +112,15 @@ bot.on('text', async (ctx) => {
             }
         }
 
-        // Сначала пробуем через процедуру
-        const result = await messageHandler.saveMessage(ctx.message);
-        if (!result) {
-            // Если не получилось, пробуем прямое сохранение
-            console.log('Пробуем прямое сохранение...');
-            await messageHandler.saveMessageDirect(ctx.message);
+        // Сохраняем сообщение
+        try {
+            const result = await messageGenerator.saveMessage(ctx.message);
+            if (!result) {
+                console.log('Пробуем прямое сохранение...');
+                await messageGenerator.saveMessageDirect(ctx.message);
+            }
+        } catch (saveError) {
+            console.error('Ошибка при сохранении сообщения:', saveError);
         }
         
         // Проверяем упоминание бота
@@ -164,15 +167,6 @@ bot.on('text', async (ctx) => {
         }
 
     } catch (error) {
-        console.error('Ошибка сохранения:', error);
-        // Проверяем ошибку на миграцию чата
-        if (error.response?.parameters?.migrate_to_chat_id) {
-            const newChatId = error.response.parameters.migrate_to_chat_id;
-            console.log(`Retrying with new chat ID: ${newChatId}`);
-            // Обновляем ID чата и пробуем снова
-            ctx.chat.id = newChatId;
-            return ctx.reply(error.on.payload.text);
-        }
         console.error('Error processing message:', error);
         if (ctx.message.from.username === 'Umbrellla777') {
             await ctx.reply('Произошла ошибка при обработке сообщения: ' + error.message);

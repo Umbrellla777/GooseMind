@@ -270,10 +270,11 @@ class MessageGenerator {
             const phraseCount = Math.floor(Math.random() * 3) + 1;
             console.log(`Пытаемся получить ${phraseCount} случайных фраз`);
 
+            // Используем правильный синтаксис для случайной сортировки в Postgres
             const { data: randomPhrases, error: phrasesError } = await this.supabase
                 .from('phrases')
                 .select('phrase')
-                .order('RANDOM()')
+                .order('random()')  // было 'RANDOM()', теперь 'random()'
                 .limit(phraseCount);
 
             if (phrasesError) {

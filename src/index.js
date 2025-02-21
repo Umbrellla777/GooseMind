@@ -7,12 +7,11 @@ const config = require('./config');
 // Настройки для бота
 const botOptions = {
     telegram: {
-        // Увеличим таймауты
         apiRoot: 'https://api.telegram.org',
-        timeout: 30000,
+        apiTimeout: 30000, // уменьшим таймаут до 30 секунд
         webhookReply: false
     },
-    handlerTimeout: 90000
+    handlerTimeout: 30000 // уменьшим общий таймаут
 };
 
 const bot = new Telegraf(config.BOT_TOKEN, botOptions);
@@ -25,6 +24,25 @@ const messageGenerator = new MessageGenerator(supabase);
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
 let awaitingSwearToggle = false;
+
+// Добавим обработку разрыва соединения
+let isConnected = true;
+const reconnectInterval = 5000; // 5 секунд между попытками
+
+async function reconnect() {
+    try {
+        if (!isConnected) {
+            console.log('Попытка переподключения к Telegram...');
+            await bot.telegram.getMe();
+            isConnected = true;
+            console.log('Успешно переподключились к Telegram');
+        }
+    } catch (error) {
+        isConnected = false;
+        console.error('Ошибка при переподключении:', error.message);
+        setTimeout(reconnect, reconnectInterval);
+    }
+}
 
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
@@ -156,125 +174,148 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// Обработчики кнопок
-bot.action('set_probability', async (ctx) => {
+// Обработчик кнопок с быстрым ответом
+async function handleCallback(ctx, action) {
     try {
+        // Проверяем доступ
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+            await ctx.answerCallbackQuery('Только @Umbrellla777 может использовать эти кнопки');
+            return;
         }
-        
-        awaitingProbability = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
-            'Например: 10 - ответ на 10% сообщений\n' +
-            'Текущее значение: ' + config.RESPONSE_PROBABILITY + '%'
-        );
-    } catch (error) {
-        console.error('Ошибка при установке вероятности:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
 
-bot.action('clear_db', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+        switch (action) {
+            case 'set_probability':
+                awaitingProbability = true;
+                await ctx.answerCallbackQuery('Введите новую вероятность');
+                await ctx.reply(
+                    '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
+                    'Например: 10 - ответ на 10% сообщений\n' +
+                    'Текущее значение: ' + config.RESPONSE_PROBABILITY + '%'
+                );
+                break;
+
+            case 'set_reaction_probability':
+                awaitingReactionProbability = true;
+                await ctx.answerCallbackQuery('Введите новую вероятность реакций');
+                await ctx.reply(
+                    '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
+                    'Например: 15 - реакция на 15% сообщений\n' +
+                    'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
+                );
+                break;
+
+            case 'toggle_swears':
+                config.SWEAR_ENABLED = !config.SWEAR_ENABLED;
+                const status = config.SWEAR_ENABLED ? 'включены' : 'выключены';
+                
+                try {
+                    const newKeyboard = {
+                        inline_keyboard: [
+                            [
+                                { text: '⚡️ Частота ответа', callback_data: 'set_probability' },
+                                { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
+                            ],
+                            [
+                                { 
+                                    text: config.SWEAR_ENABLED ? '🤬 Маты: ВКЛ' : '😇 Маты: ВЫКЛ',
+                                    callback_data: 'toggle_swears'
+                                }
+                            ],
+                            [
+                                { text: '🗑 Очистить память', callback_data: 'clear_db' }
+                            ]
+                        ]
+                    };
+
+                    const newText = 
+                        `Текущие настройки Полуумного Гуся:\n` +
+                        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+                        `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+                        `Маты: ${status}`;
+
+                    await ctx.editMessageText(newText, { reply_markup: newKeyboard });
+                    await ctx.answerCallbackQuery(`Маты ${status}`);
+                } catch (error) {
+                    if (error.description?.includes('message is not modified')) {
+                        await ctx.answerCallbackQuery(`Маты ${status}`);
+                    } else {
+                        throw error;
+                    }
+                }
+                break;
+
+            case 'clear_db':
+                await ctx.answerCallbackQuery('Очистка базы данных...');
+                await messageHandler.clearDatabase();
+                await ctx.reply('✅ База данных успешно очищена!');
+                break;
+
+            default:
+                await ctx.answerCallbackQuery('Неизвестное действие');
         }
-        
-        await messageHandler.clearDatabase();
-        await ctx.answerCbQuery('База данных очищена');
-        await ctx.reply('✅ База данных успешно очищена!');
     } catch (error) {
-        console.error('Ошибка при очистке базы данных:', error);
-        await ctx.answerCbQuery('Ошибка при очистке базы данных');
-    }
-});
-
-// Добавляем обработчик для установки вероятности реакций
-bot.action('set_reaction_probability', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+        console.error('Ошибка обработки callback:', error);
+        try {
+            await ctx.answerCallbackQuery('Произошла ошибка').catch(() => {});
+            await ctx.reply('Произошла ошибка: ' + error.message).catch(() => {});
+        } catch (e) {
+            console.error('Ошибка отправки уведомления об ошибке:', e);
         }
-        
-        awaitingReactionProbability = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
-            'Например: 15 - реакция на 15% сообщений\n' +
-            'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
-        );
-    } catch (error) {
-        console.error('Ошибка при установке вероятности реакций:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
     }
-});
+}
 
-// Добавляем новый обработчик для toggle_swears
-bot.action('toggle_swears', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        // Переключаем состояние
-        config.SWEAR_ENABLED = !config.SWEAR_ENABLED;
-        
-        // Обновляем сообщение с настройками
-        const keyboard = ctx.callbackQuery.message.reply_markup;
-        // Находим и обновляем кнопку с матами
-        keyboard.inline_keyboard[1][0] = {
-            text: config.SWEAR_ENABLED ? '🤬 Маты: ВКЛ' : '😇 Маты: ВЫКЛ',
-            callback_data: 'toggle_swears'
-        };
+// Регистрируем обработчики
+bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
+bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
+bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
+bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
-        await ctx.editMessageText(
-            `Текущие настройки Полуумного Гуся:\n` +
-            `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-            `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-            `Маты: ${config.SWEAR_ENABLED ? 'включены' : 'выключены'}`,
-            { reply_markup: keyboard }
-        );
-
-        await ctx.answerCbQuery(
-            config.SWEAR_ENABLED ? 'Маты включены' : 'Маты выключены'
-        );
-    } catch (error) {
-        console.error('Ошибка при переключении матов:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
-
-// Добавим обработку ошибок подключения
+// Обработка ошибок
 bot.catch((err, ctx) => {
-    console.error('Ошибка Telegraf:', err);
-    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET') {
-        console.log('Переподключение к Telegram...');
-        bot.telegram.getMe().catch(e => {
-            console.error('Ошибка переподключения:', e);
-        });
+    console.error('Ошибка Telegraf:', err.message);
+    
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.code === 'ETELEGRAM') {
+        isConnected = false;
+        reconnect();
     }
+    
     if (ctx?.from?.username === 'Umbrellla777') {
-        ctx.reply('Произошла ошибка в работе бота: ' + err.message).catch(() => {});
+        ctx.reply('Произошла ошибка в работе бота: ' + err.message)
+            .catch(e => console.error('Ошибка отправки сообщения об ошибке:', e.message));
     }
 });
 
-// Добавим периодическую проверку соединения
-setInterval(() => {
-    bot.telegram.getMe().catch(err => {
-        console.error('Ошибка проверки соединения:', err);
-    });
-}, 60000); // каждую минуту
+// Запуск бота с обработкой ошибок
+async function startBot() {
+    try {
+        await bot.launch();
+        console.log('Бот запущен');
+        isConnected = true;
+    } catch (error) {
+        console.error('Ошибка при запуске бота:', error.message);
+        isConnected = false;
+        setTimeout(startBot, reconnectInterval);
+    }
+}
 
-// Запуск бота
-bot.launch().then(() => {
-    console.log('Бот запущен');
-    console.log('Текущая вероятность ответа:', config.RESPONSE_PROBABILITY);
-}).catch((error) => {
-    console.error('Ошибка при запуске бота:', error);
-});
+startBot();
 
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM')); 
+process.once('SIGINT', () => {
+    console.log('Выключение бота...');
+    bot.stop('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+    console.log('Выключение бота...');
+    bot.stop('SIGTERM');
+});
+
+// Обработка необработанных ошибок
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Необработанная ошибка в Promise:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Необработанная ошибка:', error);
+}); 

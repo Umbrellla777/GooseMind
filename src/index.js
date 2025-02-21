@@ -1,7 +1,7 @@
 const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
-const MessageGenerator = require('./services/messageGenerator').MessageGenerator;
+const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
 
 const bot = new Telegraf(config.BOT_TOKEN);
@@ -49,8 +49,8 @@ bot.on('text', async (ctx) => {
 
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
-                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}\n` +
+                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
                 `Множитель матов: ${config.SWEAR_MULTIPLIER}\n` +
                 `Шанс матов: ${(config.SWEAR_CHANCE * 100).toFixed(0)}%`,
                 { reply_markup: keyboard }
@@ -150,7 +150,7 @@ bot.on('text', async (ctx) => {
         if (awaitingSwearChance && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
             const chance = parseInt(ctx.message.text);
             if (!isNaN(chance) && chance >= 0 && chance <= 100) {
-                config.SWEAR_CHANCE = chance;
+                config.SWEAR_CHANCE = chance / 100;
                 await ctx.reply(`✅ Шанс матов установлен на ${chance}%`);
                 awaitingSwearChance = false;
                 return;
@@ -265,7 +265,7 @@ bot.action('set_swear_chance', async (ctx) => {
             '🎲 Введите шанс использования матов (от 0 до 100%).\n' +
             'Например: 30 - маты будут в 30% предложений\n' +
             '0 - маты не используются\n' +
-            'Текущее значение: ' + config.SWEAR_CHANCE + '%'
+            'Текущее значение: ' + (config.SWEAR_CHANCE * 100).toFixed(0) + '%'
         );
     } catch (error) {
         console.error('Ошибка при установке шанса матов:', error);
@@ -282,14 +282,7 @@ bot.catch((err, ctx) => {
 });
 
 // Запуск бота
-let isRunning = false;
-
 bot.launch().then(() => {
-    if (isRunning) {
-        console.log('Бот уже запущен');
-        return;
-    }
-    isRunning = true;
     console.log('Бот запущен');
     console.log('Текущая вероятность ответа:', config.RESPONSE_PROBABILITY);
 }).catch((error) => {
@@ -297,9 +290,5 @@ bot.launch().then(() => {
 });
 
 // Graceful shutdown
-process.once('SIGINT', () => {
-    isRunning = false;
-    bot.stop('SIGINT');
-});
-
+process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM')); 

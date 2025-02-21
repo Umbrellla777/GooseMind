@@ -106,27 +106,80 @@ class MessageGenerator {
     }
 
     getFallbackWords() {
-        // Возвращаем пустую карту слов
-        return new Map();
+        // Забавные заготовки для случайной генерации
+        const funnyWords = {
+            subjects: ['котик', 'программист', 'чайник', 'компьютер', 'хомяк', 'единорог'],
+            verbs: ['танцует', 'спит', 'летает', 'мечтает', 'хихикает', 'философствует'],
+            adjectives: ['весёлый', 'загадочный', 'пушистый', 'космический', 'шальной'],
+            objects: ['пельмени', 'код', 'звёзды', 'мемы', 'печеньки', 'смайлики']
+        };
+
+        const wordMap = new Map();
+        Object.values(funnyWords).flat().forEach(word => {
+            wordMap.set(word, {
+                contexts: new Set(['funny']),
+                nextWords: new Set(),
+                relevance: Math.random()
+            });
+        });
+
+        return wordMap;
     }
 
     calculateRelevance(word, context, inputStems, messageContext) {
         let relevance = 0;
         const wordStem = this.stemmer.stem(word);
         
+        // Список забавных слов с высоким приоритетом
+        const funnyWords = [
+            'котик', 'хомяк', 'единорог', 'пельмени', 'печеньки',
+            'танцует', 'хихикает', 'мечтает', 'летает',
+            'весёлый', 'пушистый', 'загадочный', 'космический',
+            'мемы', 'смайлики', 'программист', 'чайник'
+        ];
+        
         // Повышаем релевантность матов для более частого их использования
         if (this.isSwearWord(word)) {
+            // Если множитель 0, игнорируем маты
             if (config.SWEAR_MULTIPLIER === 0) {
-                return -1;
+                return -1; // Отрицательная релевантность, чтобы исключить слово
             }
             relevance += 2 * config.SWEAR_MULTIPLIER;
         }
         
+        // Добавляем случайные забавные слова
+        const randomFunnyWords = funnyWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2);
+        
+        // Повышаем релевантность забавных слов
+        if (funnyWords.includes(word.toLowerCase()) || 
+            randomFunnyWords.includes(word.toLowerCase())) {
+            relevance += 3;
+        }
+
         // Базовая релевантность
         if (inputStems.includes(wordStem)) {
             relevance += 2;
         }
 
+        // Учитываем контекст последних сообщений
+        if (messageContext && messageContext.length > 0) {
+            const recentMessages = messageContext
+                .map(msg => msg.text)
+                .join(' ')
+                .toLowerCase();
+            
+            const contextStems = this.tokenizer
+                .tokenize(recentMessages)
+                .map(w => this.stemmer.stem(w));
+            
+            // Добавляем релевантность на основе контекста
+            if (contextStems.includes(wordStem)) {
+                relevance += 0.5;
+            }
+        }
+        
         return relevance;
     }
 
@@ -138,45 +191,32 @@ class MessageGenerator {
     }
 
     generateSentence(wordMap, context) {
-        // В начале генерации определяем, будут ли маты в этом предложении
-        const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
-        
         const sentence = [];
         const words = Array.from(wordMap.keys());
         
-        // Требуем минимум 3 реальных слова из БД
-        if (words.length < 3) {
-            console.log('Недостаточно слов в БД:', words);
+        if (words.length < 2) {
             return this.generateFallbackSentence();
         }
 
-        // Фильтруем слова в зависимости от решения использовать маты
-        const availableWords = useSwears 
-            ? words 
-            : words.filter(word => !this.isSwearWord(word));
-        
-        if (availableWords.length < 3) {
-            console.log('Недостаточно доступных слов после фильтрации:', availableWords);
-            return this.generateFallbackSentence();
-        }
-
-        let currentWord = this.selectStartWord(availableWords, wordMap);
+        let currentWord = this.selectStartWord(words, wordMap);
         sentence.push(currentWord);
 
         // Уменьшаем длину до 3-8 слов
         const targetLength = Math.floor(Math.random() * 5) + 3;
+        let repeatedWords = 0;
+        const maxRepeats = 1; // Запрещаем повторения слов
 
         while (sentence.length < targetLength) {
             const wordData = wordMap.get(currentWord);
             let nextWord = null;
             
             // Выбираем случайное слово из доступных, исключая использованные
-            const nextWords = availableWords.filter(word => 
+            const availableWords = words.filter(word => 
                 !sentence.includes(word)
             );
             
-            if (nextWords.length === 0) break;
-            nextWord = nextWords[Math.floor(Math.random() * nextWords.length)];
+            if (availableWords.length === 0) break;
+            nextWord = availableWords[Math.floor(Math.random() * availableWords.length)];
 
             if (nextWord) {
                 sentence.push(nextWord);
@@ -184,12 +224,6 @@ class MessageGenerator {
             } else {
                 break;
             }
-        }
-
-        // Если получилось слишком короткое предложение, генерируем заново
-        if (sentence.length < 3) {
-            console.log('Слишком короткое предложение:', sentence);
-            return this.generateFallbackSentence();
         }
 
         return sentence;
@@ -263,81 +297,31 @@ class MessageGenerator {
     }
 
     async generateLocalResponse(message) {
-        try {
-            console.log('Начало генерации ответа');
+        // Обновляем контекст для данного чата
+        this.updateContext(message);
 
-            // Получаем 1-3 случайные фразы из всей базы
-            const phraseCount = Math.floor(Math.random() * 3) + 1;
-            console.log(`Пытаемся получить ${phraseCount} случайных фраз`);
+        // Анализируем входящее сообщение
+        const keywords = await this.gemini.analyzeMessage(message.text);
+        
+        // Получаем релевантные сообщения из БД
+        const relevantMessages = await this.getRelevantMessagesFromDB(keywords);
+        
+        // Анализируем контекст и релевантные сообщения
+        const contextWords = await this.analyzeContextAndMessages(message.text, relevantMessages);
+        
+        // Добавляем ключевые слова в релевантность
+        const wordMap = await this.getWordsFromDatabase(message.chat.id, 
+            message.text + ' ' + keywords.join(' ') + ' ' + contextWords.join(' ')
+        );
 
-            // Сначала получим общее количество фраз
-            const { count } = await this.supabase
-                .from('phrases')
-                .select('*', { count: 'exact', head: true });
-
-            if (!count) {
-                console.log('Фразы не найдены');
-                return "Гусь молчит...";
-            }
-
-            // Получаем случайные фразы через offset
-            const randomPhrases = [];
-            for (let i = 0; i < phraseCount; i++) {
-                const randomOffset = Math.floor(Math.random() * count);
-                const { data: phrases, error } = await this.supabase
-                    .from('phrases')
-                    .select('phrase')
-                    .range(randomOffset, randomOffset)
-                    .limit(1);
-
-                if (!error && phrases && phrases.length > 0) {
-                    randomPhrases.push(phrases[0]);
-                }
-            }
-
-            console.log('Найденные фразы:', randomPhrases);
-
-            if (randomPhrases.length === 0) {
-                console.log('Фразы не найдены');
-                return "Гусь молчит...";
-            }
-
-            // Получаем последние 10 сообщений для контекста
-            console.log('Получаем последние сообщения');
-            const { data: recentMessages, error: messagesError } = await this.supabase
-                .from('messages')
-                .select('text')
-                .eq('chat_id', message.chat.id)
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            if (messagesError) {
-                console.error('Ошибка получения сообщений:', messagesError);
-            }
-
-            console.log('Последние сообщения:', recentMessages?.length || 0);
-
-            const context = recentMessages?.map(m => m.text).join('\n') || '';
-
-            // Объединяем случайные фразы
-            const basePhrase = randomPhrases.map(p => p.phrase).join(' ');
-            console.log('Базовая фраза для генерации:', basePhrase);
-
-            // Генерируем ответ через Gemini
-            console.log('Отправляем запрос в Gemini');
-            const response = await this.gemini.generateContinuation(
-                basePhrase,
-                context,
-                message.text,
-                config.SWEAR_ENABLED
-            );
-
-            console.log('Ответ от Gemini:', response);
-            return response;
-        } catch (error) {
-            console.error('Error generating response:', error);
-            return "Гусь молчит...";
+        // Если база пуста - используем заготовленные ответы
+        if (wordMap.size === 0) {
+            return this.generateFallbackResponse(message.text);
         }
+
+        // Генерируем предложение с учетом контекста
+        const sentence = this.generateSentence(wordMap, this.getContext(message.chat.id));
+        return this.enhanceSentence(sentence);
     }
 
     updateContext(message) {
@@ -363,7 +347,16 @@ class MessageGenerator {
     }
 
     generateFallbackResponse(inputText) {
-        return "Гусь молчит...";
+        const responses = [
+            "Интересная мысль! Давайте развивать её дальше.",
+            "Хм, нужно подумать над этим...",
+            "А что если посмотреть на это с другой стороны?",
+            "Забавно, я как раз думал о чём-то похожем!",
+            "Это напомнило мне одну историю...",
+        ];
+        
+        // Выбираем случайный ответ
+        return responses[Math.floor(Math.random() * responses.length)];
     }
 
     async checkDatabaseContent(chatId) {
@@ -399,8 +392,17 @@ class MessageGenerator {
     }
 
     generateFallbackSentence() {
-        // Возвращаем простое сообщение, если в БД недостаточно слов
-        return ['Гусь', 'учится', 'говорить'];
+        const templates = [
+            ['я', 'думаю', 'что'],
+            ['возможно', 'стоит'],
+            ['интересно', 'а'],
+            ['хм', 'давайте', 'подумаем'],
+            ['а', 'что', 'если'],
+            ['забавно', 'но'],
+        ];
+        
+        const template = templates[Math.floor(Math.random() * templates.length)];
+        return [...template, this.selectRandomWord(Array.from(this.wordsCache.keys()))];
     }
 
     async getRelevantMessagesFromDB(keywords) {
@@ -451,274 +453,6 @@ class MessageGenerator {
         } catch (error) {
             console.error('Error analyzing context:', error);
             return [];
-        }
-    }
-
-    async getRecentMessages(chatId, limit = 10) {
-        try {
-            const { data: messages } = await this.supabase
-                .from('messages')
-                .select('text')
-                .eq('chat_id', chatId)
-                .order('created_at', { ascending: false })
-                .limit(limit);
-
-            return messages?.map(m => m.text) || [];
-        } catch (error) {
-            console.error('Error getting recent messages:', error);
-            return [];
-        }
-    }
-
-    extractPhrases(messages) {
-        // Теперь фразы уже готовы из БД
-        return messages.map(msg => msg.phrase.split(' '));
-    }
-
-    selectRelevantPhrases(phrases, inputText) {
-        // Анализируем входной текст
-        const inputWords = this.tokenizer.tokenize(inputText.toLowerCase());
-        const inputStems = inputWords.map(word => this.stemmer.stem(word));
-
-        // Оцениваем релевантность каждой фразы
-        const scoredPhrases = phrases.map(phrase => ({
-            phrase,
-            score: this.calculatePhraseRelevance(phrase, inputStems)
-        }));
-
-        // Сортируем и выбираем топ-2 фразы
-        return scoredPhrases
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 2)
-            .map(item => item.phrase);
-    }
-
-    calculatePhraseRelevance(phrase, inputStems) {
-        let score = 0;
-        phrase.forEach(word => {
-            const wordStem = this.stemmer.stem(word);
-            if (inputStems.includes(wordStem)) {
-                score += 2;
-            }
-            if (this.isSwearWord(word)) {
-                if (config.SWEAR_MULTIPLIER === 0) {
-                    score -= 10; // Сильно понижаем рейтинг матов если они отключены
-                } else {
-                    score += 2 * config.SWEAR_MULTIPLIER;
-                }
-            }
-        });
-        return score;
-    }
-
-    async generateContinuation(phrases, inputText) {
-        // Объединяем фразы в строку
-        const baseText = phrases.map(phrase => phrase.join(' ')).join(' ');
-        
-        // Генерируем продолжение через Gemini
-        const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
-        const continuation = await this.gemini.generateContinuation(
-            baseText,
-            inputText,
-            useSwears
-        );
-        
-        return continuation;
-    }
-
-    async saveMessage(message) {
-        try {
-            if (!message?.text) {
-                console.log('Пропуск пустого сообщения');
-                return;
-            }
-
-            console.log('Начало сохранения сообщения:', {
-                message_id: message.message_id,
-                chat_id: message.chat.id,
-                text: message.text?.substring(0, 50)
-            });
-
-            // Сохраняем чат
-            await this.supabase
-                .from('chats')
-                .upsert({
-                    id: message.chat.id,
-                    title: message.chat.title || '',
-                    type: message.chat.type || 'private'
-                });
-
-            // Сохраняем пользователя
-            await this.supabase
-                .from('users')
-                .upsert({
-                    id: message.from.id,
-                    username: message.from.username || '',
-                    first_name: message.from.first_name || '',
-                    last_name: message.from.last_name || ''
-                });
-
-            // Сохраняем сообщение
-            const { data: savedMessage, error: messageError } = await this.supabase
-                .from('messages')
-                .insert({
-                    message_id: message.message_id,
-                    chat_id: message.chat.id,
-                    user_id: message.from.id,
-                    text: message.text,
-                    type: 'text'
-                })
-                .select()
-                .single();
-
-            if (messageError) {
-                console.error('Ошибка сохранения сообщения:', messageError);
-                return null;
-            }
-
-            // Разбиваем на фразы
-            const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-            const phrases = [];
-
-            for (let i = 0; i < words.length - 1; i++) {
-                phrases.push({
-                    chat_id: message.chat.id,
-                    message_id: savedMessage.id,
-                    phrase: `${words[i]} ${words[i + 1]}`
-                });
-
-                if (i < words.length - 2) {
-                    phrases.push({
-                        chat_id: message.chat.id,
-                        message_id: savedMessage.id,
-                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`
-                    });
-                }
-            }
-
-            if (phrases.length > 0) {
-                const { error: phrasesError } = await this.supabase
-                    .from('phrases')
-                    .insert(phrases);
-
-                if (phrasesError) {
-                    console.error('Ошибка сохранения фраз:', phrasesError);
-                } else {
-                    console.log(`Сохранено ${phrases.length} фраз`);
-                }
-            }
-
-            return savedMessage;
-        } catch (error) {
-            console.error('Ошибка сохранения:', error);
-            return null;
-        }
-    }
-
-    async getRandomPhrase(chatId) {
-        try {
-            const { data: phrase } = await this.supabase
-                .from('phrases')
-                .select('phrase')
-                .eq('chat_id', chatId)
-                .order('RANDOM()')
-                .limit(1)
-                .single();
-
-            return phrase?.phrase || null;
-        } catch (error) {
-            console.error('Error getting random phrase:', error);
-            return null;
-        }
-    }
-
-    async saveMessageDirect(message) {
-        try {
-            console.log('Начало прямого сохранения сообщения:', {
-                text: message.text?.substring(0, 50),
-                chat_id: message.chat.id
-            });
-
-            // Сохраняем чат
-            await this.supabase
-                .from('chats')
-                .upsert({
-                    id: message.chat.id,
-                    title: message.chat.title || '',
-                    type: message.chat.type || 'private'
-                });
-
-            // Сохраняем пользователя
-            await this.supabase
-                .from('users')
-                .upsert({
-                    id: message.from.id,
-                    username: message.from.username || '',
-                    first_name: message.from.first_name || '',
-                    last_name: message.from.last_name || ''
-                });
-
-            // Сохраняем сообщение
-            const { data: savedMessage, error: messageError } = await this.supabase
-                .from('messages')
-                .insert({
-                    message_id: message.message_id,
-                    chat_id: message.chat.id,
-                    user_id: message.from.id,
-                    text: message.text,
-                    type: 'text'
-                })
-                .select()
-                .single();
-
-            if (messageError) {
-                if (messageError.code === '23505') { // Unique violation
-                    console.log('Сообщение уже существует, пропускаем');
-                    return null;
-                }
-                console.error('Ошибка сохранения сообщения:', messageError);
-                return null;
-            }
-
-            // Разбиваем на фразы
-            const words = message.text?.toLowerCase().split(/\s+/).filter(w => w.length > 0) || [];
-            const phrases = [];
-
-            for (let i = 0; i < words.length - 1; i++) {
-                // Фраза из 2 слов
-                phrases.push({
-                    chat_id: message.chat.id,
-                    message_id: savedMessage.id,
-                    phrase: `${words[i]} ${words[i + 1]}`
-                });
-
-                // Фраза из 3 слов
-                if (i < words.length - 2) {
-                    phrases.push({
-                        chat_id: message.chat.id,
-                        message_id: savedMessage.id,
-                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`
-                    });
-                }
-            }
-
-            // Сохраняем фразы
-            if (phrases.length > 0) {
-                const { error: phrasesError } = await this.supabase
-                    .from('phrases')
-                    .insert(phrases);
-
-                if (phrasesError) {
-                    console.error('Ошибка сохранения фраз:', phrasesError);
-                } else {
-                    console.log(`Сохранено ${phrases.length} фраз`);
-                }
-            }
-
-            return savedMessage;
-        } catch (error) {
-            console.error('Ошибка прямого сохранения:', error);
-            return null;
         }
     }
 }

@@ -4,9 +4,9 @@ module.exports = {
     BOT_TOKEN: process.env.BOT_TOKEN,
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_KEY: process.env.SUPABASE_KEY,
-    RESPONSE_PROBABILITY: 10, // Вероятность автоматической генерации (10%)
-    REACTION_PROBABILITY: 15, // Вероятность реакции (15%)
-    SWEAR_ENABLED: false, // Просто вкл/выкл матов
+    RESPONSE_PROBABILITY: 0.1, // Вероятность автоматической генерации по умолчанию
+    REACTION_PROBABILITY: 0.15, // Добавляем вероятность реакции
+    SWEAR_MULTIPLIER: 3, // Множитель для частоты матов
     BOT_NAMES: [
         'Гусь', 'Гуся', 'гуся',
         'полумный', 'гусь', 'полумный гусь',

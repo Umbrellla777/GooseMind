@@ -73,50 +73,6 @@ class GeminiService {
             return text;
         }
     }
-
-    async generateContinuation(basePhrase, context, lastMessage, allowSwears) {
-        try {
-            const prompt = `Контекст: Ты - полуумный гусь, который отвечает на сообщения в чате.
-                           
-                           Последние 10 сообщений в чате:
-                           "${context}"
-                           
-                           Последнее сообщение:
-                           "${lastMessage}"
-                           
-                           У меня есть случайные фразы из базы:
-                           "${basePhrase}"
-                           
-                           Задача:
-                           1. Используй фразы из базы как основу
-                           2. Добавь несколько слов, чтобы получилось логичное предложение
-                           3. Ответ должен быть связан с последним сообщением
-                           4. Учитывай контекст предыдущих сообщений
-                           5. ${allowSwears ? 'Можно использовать маты из контекста' : 'Не используй маты'}
-                           6. Сохраняй разговорный стиль и юмор
-                           7. Ответ должен быть НЕ ДЛИННЕЕ 25 слов
-                           8. Используй минимум одну фразу из предоставленных
-                           
-                           Отвечай ТОЛЬКО готовым предложением.`;
-
-            const result = await this.model.generateContent({
-                contents: [{ parts: [{ text: prompt }] }]
-            });
-
-            let response = result.response.text().trim();
-            
-            // Проверяем длину ответа
-            const words = response.split(/\s+/);
-            if (words.length > 25) {
-                response = words.slice(0, 25).join(' ') + '...';
-            }
-
-            return response;
-        } catch (error) {
-            console.error('Gemini continuation error:', error);
-            return "Гусь молчит...";
-        }
-    }
 }
 
 module.exports = { GeminiService }; 

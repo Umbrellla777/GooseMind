@@ -1,5 +1,4 @@
 const config = require('../config');
-const { MessageGenerator } = require('../services/messageGenerator');
 
 // Константы для реакций
 const REACTIONS = {
@@ -14,15 +13,33 @@ const REACTIONS = {
 class MessageHandler {
     constructor(supabase) {
         this.supabase = supabase;
-        this.messageGenerator = new MessageGenerator(supabase);
     }
 
     async saveMessage(message) {
-        return await this.messageGenerator.saveMessage(message);
-    }
-
-    async saveMessageDirect(message) {
-        return await this.messageGenerator.saveMessageDirect(message);
+        const words = this.parseMessage(message.text);
+        
+        // Сохраняем сообщение
+        await this.supabase
+            .from('messages')
+            .insert({
+                message_id: message.message_id,
+                chat_id: message.chat.id,
+                user_id: message.from.id,
+                text: message.text,
+                timestamp: new Date(message.date * 1000),
+                words: words
+            });
+            
+        // Сохраняем слова и их контекст
+        for (const word of words) {
+            await this.supabase
+                .from('words')
+                .insert({
+                    word: word.toLowerCase(),
+                    message_id: message.message_id,
+                    context: words.join(' ')
+                });
+        }
     }
 
     parseMessage(text) {

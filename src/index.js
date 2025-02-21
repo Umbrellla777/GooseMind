@@ -123,24 +123,20 @@ bot.on('text', async (ctx) => {
             console.error('Ошибка при сохранении сообщения:', saveError);
         }
         
-        // Проверяем упоминание бота
-        if (messageHandler.isBotMentioned(ctx.message.text)) {
+        // Проверяем вероятность ответа
+        const shouldRespond = Math.random() * 100 < config.RESPONSE_PROBABILITY;
+        console.log(`Вероятность ответа: ${config.RESPONSE_PROBABILITY}%, выпало: ${shouldRespond}`);
+
+        if (shouldRespond || messageHandler.isBotMentioned(ctx.message.text)) {
+            console.log('Генерируем ответ...');
             const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
-            return;
-        }
-        
-        // Проверяем ответ на сообщение бота
-        if (ctx.message.reply_to_message?.from?.id === ctx.botInfo.id) {
-            const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
-            return;
-        }
-        
-        // Случайная генерация сообщений и реакций
-        if (Math.random() < config.RESPONSE_PROBABILITY / 100) {
-            const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
+            if (response && response !== "Гусь молчит...") {
+                await ctx.reply(response);
+            } else {
+                console.log('Пустой ответ от генератора');
+            }
+        } else {
+            console.log('Пропускаем сообщение по вероятности');
         }
 
         // Анализируем сообщение для реакции

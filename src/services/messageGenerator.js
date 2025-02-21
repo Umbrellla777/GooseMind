@@ -264,32 +264,53 @@ class MessageGenerator {
 
     async generateLocalResponse(message) {
         try {
+            console.log('Начало генерации ответа');
+
             // Получаем 1-3 случайные фразы из всей базы
             const phraseCount = Math.floor(Math.random() * 3) + 1;
-            const { data: randomPhrases } = await this.supabase
+            console.log(`Пытаемся получить ${phraseCount} случайных фраз`);
+
+            const { data: randomPhrases, error: phrasesError } = await this.supabase
                 .from('phrases')
                 .select('phrase')
                 .order('RANDOM()')
                 .limit(phraseCount);
 
+            if (phrasesError) {
+                console.error('Ошибка получения фраз:', phrasesError);
+                return "Гусь молчит...";
+            }
+
+            console.log('Найденные фразы:', randomPhrases);
+
             if (!randomPhrases || randomPhrases.length === 0) {
+                console.log('Фразы не найдены');
                 return "Гусь молчит...";
             }
 
             // Получаем последние 10 сообщений для контекста
-            const { data: recentMessages } = await this.supabase
+            console.log('Получаем последние сообщения');
+            const { data: recentMessages, error: messagesError } = await this.supabase
                 .from('messages')
                 .select('text')
                 .eq('chat_id', message.chat.id)
                 .order('created_at', { ascending: false })
                 .limit(10);
 
+            if (messagesError) {
+                console.error('Ошибка получения сообщений:', messagesError);
+            }
+
+            console.log('Последние сообщения:', recentMessages?.length || 0);
+
             const context = recentMessages?.map(m => m.text).join('\n') || '';
 
             // Объединяем случайные фразы
             const basePhrase = randomPhrases.map(p => p.phrase).join(' ');
+            console.log('Базовая фраза для генерации:', basePhrase);
 
             // Генерируем ответ через Gemini
+            console.log('Отправляем запрос в Gemini');
             const response = await this.gemini.generateContinuation(
                 basePhrase,
                 context,
@@ -297,6 +318,7 @@ class MessageGenerator {
                 config.SWEAR_ENABLED
             );
 
+            console.log('Ответ от Gemini:', response);
             return response;
         } catch (error) {
             console.error('Error generating response:', error);

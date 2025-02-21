@@ -74,24 +74,28 @@ class GeminiService {
         }
     }
 
-    async generateContinuation(basePhrase, context, allowSwears) {
+    async generateContinuation(basePhrase, context, lastMessage, allowSwears) {
         try {
             const prompt = `Контекст: Ты - полуумный гусь, который отвечает на сообщения в чате.
                            
                            Последние 10 сообщений в чате:
                            "${context}"
                            
+                           Последнее сообщение:
+                           "${lastMessage}"
+                           
                            У меня есть случайные фразы из базы:
                            "${basePhrase}"
                            
                            Задача:
-                           1. Проанализируй контекст обсуждения
-                           2. Используй фразы из базы как основу
-                           3. Добавь 2-3 слова, чтобы получилось логичное предложение
-                           4. Предложение должно быть связано с темой обсуждения
+                           1. Используй фразы из базы как основу
+                           2. Добавь несколько слов, чтобы получилось логичное предложение
+                           3. Ответ должен быть связан с последним сообщением
+                           4. Учитывай контекст предыдущих сообщений
                            5. ${allowSwears ? 'Можно использовать маты из контекста' : 'Не используй маты'}
                            6. Сохраняй разговорный стиль и юмор
-                           7. Используй все предоставленные фразы
+                           7. Ответ должен быть НЕ ДЛИННЕЕ 25 слов
+                           8. Используй минимум одну фразу из предоставленных
                            
                            Отвечай ТОЛЬКО готовым предложением.`;
 
@@ -99,7 +103,15 @@ class GeminiService {
                 contents: [{ parts: [{ text: prompt }] }]
             });
 
-            return result.response.text().trim();
+            let response = result.response.text().trim();
+            
+            // Проверяем длину ответа
+            const words = response.split(/\s+/);
+            if (words.length > 25) {
+                response = words.slice(0, 25).join(' ') + '...';
+            }
+
+            return response;
         } catch (error) {
             console.error('Gemini continuation error:', error);
             return "Гусь молчит...";

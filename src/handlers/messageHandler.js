@@ -1,5 +1,5 @@
 const config = require('../config');
-const MessageGenerator = require('./MessageGenerator');
+const { MessageGenerator } = require('../services/messageGenerator');
 
 // Константы для реакций
 const REACTIONS = {

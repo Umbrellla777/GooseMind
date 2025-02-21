@@ -264,12 +264,11 @@ class MessageGenerator {
 
     async generateLocalResponse(message) {
         try {
-            // Получаем 1-3 случайные фразы из базы
-            const phraseCount = Math.floor(Math.random() * 3) + 1; // 1, 2 или 3
+            // Получаем 1-3 случайные фразы из всей базы
+            const phraseCount = Math.floor(Math.random() * 3) + 1;
             const { data: randomPhrases } = await this.supabase
                 .from('phrases')
                 .select('phrase')
-                .eq('chat_id', message.chat.id)
                 .order('RANDOM()')
                 .limit(phraseCount);
 
@@ -277,17 +276,24 @@ class MessageGenerator {
                 return "Гусь молчит...";
             }
 
-            // Получаем последние сообщения для контекста
-            const recentMessages = await this.getRecentMessages(message.chat.id, 10);
-            const context = recentMessages.join('\n');
+            // Получаем последние 10 сообщений для контекста
+            const { data: recentMessages } = await this.supabase
+                .from('messages')
+                .select('text')
+                .eq('chat_id', message.chat.id)
+                .order('created_at', { ascending: false })
+                .limit(10);
 
-            // Объединяем фразы
+            const context = recentMessages?.map(m => m.text).join('\n') || '';
+
+            // Объединяем случайные фразы
             const basePhrase = randomPhrases.map(p => p.phrase).join(' ');
 
-            // Генерируем продолжение через Gemini
+            // Генерируем ответ через Gemini
             const response = await this.gemini.generateContinuation(
                 basePhrase,
                 context,
+                message.text,
                 config.SWEAR_ENABLED
             );
 
@@ -562,6 +568,11 @@ class MessageGenerator {
 
     async saveMessageDirect(message) {
         try {
+            console.log('Начало сохранения сообщения:', {
+                text: message.text.substring(0, 50),
+                chat_id: message.chat.id
+            });
+
             // Сохраняем чат
             const { error: chatError } = await this.supabase
                 .from('chats')
@@ -598,7 +609,6 @@ class MessageGenerator {
                     message_id: message.message_id,
                     chat_id: message.chat.id,
                     user_id: message.from.id,
-                    reply_to_message_id: message.reply_to_message?.message_id,
                     text: message.text,
                     type: 'text'
                 })
@@ -610,17 +620,19 @@ class MessageGenerator {
                 return;
             }
 
-            // Разбиваем на фразы
-            const words = message.text.toLowerCase().split(/\s+/);
+            // Разбиваем на фразы по 2-3 слова
+            const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
             const phrases = [];
 
             for (let i = 0; i < words.length - 1; i++) {
                 // Фраза из 2 слов
-                phrases.push({
-                    chat_id: message.chat.id,
-                    phrase: `${words[i]} ${words[i + 1]}`,
-                    message_id: savedMessage.id
-                });
+                if (i < words.length - 1) {
+                    phrases.push({
+                        chat_id: message.chat.id,
+                        phrase: `${words[i]} ${words[i + 1]}`,
+                        message_id: savedMessage.id
+                    });
+                }
 
                 // Фраза из 3 слов
                 if (i < words.length - 2) {
@@ -642,7 +654,6 @@ class MessageGenerator {
                     console.error('Ошибка сохранения фраз:', phrasesError);
                     return;
                 }
-
                 console.log(`Сохранено ${phrases.length} фраз`);
             }
 

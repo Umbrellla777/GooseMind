@@ -191,6 +191,9 @@ class MessageGenerator {
     }
 
     generateSentence(wordMap, context) {
+        // В начале генерации определяем, будут ли маты в этом предложении
+        const useSwears = Math.random() < config.SWEAR_CHANCE;
+        
         const sentence = [];
         const words = Array.from(wordMap.keys());
         
@@ -198,7 +201,16 @@ class MessageGenerator {
             return this.generateFallbackSentence();
         }
 
-        let currentWord = this.selectStartWord(words, wordMap);
+        // Фильтруем слова в зависимости от решения использовать маты
+        const availableWords = useSwears 
+            ? words 
+            : words.filter(word => !this.isSwearWord(word));
+        
+        if (availableWords.length < 2) {
+            return this.generateFallbackSentence();
+        }
+
+        let currentWord = this.selectStartWord(availableWords, wordMap);
         sentence.push(currentWord);
 
         // Уменьшаем длину до 3-8 слов
@@ -211,12 +223,12 @@ class MessageGenerator {
             let nextWord = null;
             
             // Выбираем случайное слово из доступных, исключая использованные
-            const availableWords = words.filter(word => 
+            const nextWords = availableWords.filter(word => 
                 !sentence.includes(word)
             );
             
-            if (availableWords.length === 0) break;
-            nextWord = availableWords[Math.floor(Math.random() * availableWords.length)];
+            if (nextWords.length === 0) break;
+            nextWord = nextWords[Math.floor(Math.random() * nextWords.length)];
 
             if (nextWord) {
                 sentence.push(nextWord);

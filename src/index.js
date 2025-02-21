@@ -123,11 +123,22 @@ bot.on('text', async (ctx) => {
             console.error('Ошибка при сохранении сообщения:', saveError);
         }
         
-        // Проверяем вероятность ответа
-        const shouldRespond = Math.random() * 100 < config.RESPONSE_PROBABILITY;
-        console.log(`Вероятность ответа: ${config.RESPONSE_PROBABILITY}%, выпало: ${shouldRespond}`);
+        // Проверяем, является ли сообщение ответом на сообщение бота
+        const isReplyToBot = ctx.message.reply_to_message?.from?.id === ctx.botInfo.id;
+        
+        // Проверяем вероятность ответа или упоминание бота
+        const shouldRespond = isReplyToBot || 
+                            messageHandler.isBotMentioned(ctx.message.text) || 
+                            Math.random() * 100 < config.RESPONSE_PROBABILITY;
 
-        if (shouldRespond || messageHandler.isBotMentioned(ctx.message.text)) {
+        console.log(`Проверка ответа:`, {
+            isReplyToBot,
+            isMentioned: messageHandler.isBotMentioned(ctx.message.text),
+            probability: config.RESPONSE_PROBABILITY,
+            shouldRespond
+        });
+
+        if (shouldRespond) {
             console.log('Генерируем ответ...');
             const response = await messageGenerator.generateResponse(ctx.message);
             if (response && response !== "Гусь молчит...") {
@@ -225,93 +236,4 @@ async function handleCallback(ctx, action) {
 
                     const newText = 
                         `Текущие настройки Полуумного Гуся:\n` +
-                        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                        `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                        `Маты: ${status}`;
-
-                    await ctx.editMessageText(newText, { reply_markup: newKeyboard });
-                    await ctx.answerCbQuery(`Маты ${status}`);
-                } catch (error) {
-                    if (error.description?.includes('message is not modified')) {
-                        await ctx.answerCbQuery(`Маты ${status}`);
-                    } else {
-                        throw error;
-                    }
-                }
-                break;
-
-            case 'clear_db':
-                await ctx.answerCbQuery('Очистка базы данных...');
-                await messageHandler.clearDatabase();
-                await ctx.reply('✅ База данных успешно очищена!');
-                break;
-
-            default:
-                await ctx.answerCbQuery('Неизвестное действие');
-        }
-    } catch (error) {
-        console.error('Ошибка обработки callback:', error);
-        try {
-            await ctx.answerCbQuery('Произошла ошибка').catch(() => {});
-            await ctx.reply('Произошла ошибка: ' + error.message).catch(() => {});
-        } catch (e) {
-            console.error('Ошибка отправки уведомления об ошибке:', e);
-        }
-    }
-}
-
-// Регистрируем обработчики
-bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
-bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
-bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
-
-// Обработка ошибок
-bot.catch((err, ctx) => {
-    console.error('Ошибка Telegraf:', err.message);
-    
-    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.code === 'ETELEGRAM') {
-        isConnected = false;
-        reconnect();
-    }
-    
-    if (ctx?.from?.username === 'Umbrellla777') {
-        ctx.reply('Произошла ошибка в работе бота: ' + err.message)
-            .catch(e => console.error('Ошибка отправки сообщения об ошибке:', e.message));
-    }
-});
-
-// Запуск бота с обработкой ошибок
-async function startBot() {
-    try {
-        await bot.launch();
-        console.log('Бот запущен');
-        isConnected = true;
-    } catch (error) {
-        console.error('Ошибка при запуске бота:', error.message);
-        isConnected = false;
-        setTimeout(startBot, reconnectInterval);
-    }
-}
-
-startBot();
-
-// Graceful shutdown
-process.once('SIGINT', () => {
-    console.log('Выключение бота...');
-    bot.stop('SIGINT');
-});
-
-process.once('SIGTERM', () => {
-    console.log('Выключение бота...');
-    bot.stop('SIGTERM');
-});
-
-// Обработка необработанных ошибок
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Необработанная ошибка в Promise:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('Необработанная ошибка:', error);
-}); 
+                        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n`

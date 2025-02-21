@@ -263,22 +263,39 @@ class MessageGenerator {
     }
 
     async generateLocalResponse(message) {
-        // Обновляем контекст для данного чата
-        this.updateContext(message);
+        try {
+            // Получаем 1-3 случайные фразы из базы
+            const phraseCount = Math.floor(Math.random() * 3) + 1; // 1, 2 или 3
+            const { data: randomPhrases } = await this.supabase
+                .from('phrases')
+                .select('phrase')
+                .eq('chat_id', message.chat.id)
+                .order('RANDOM()')
+                .limit(phraseCount);
 
-        // Получаем последние сообщения из БД
-        const recentMessages = await this.getRecentMessages(message.chat.id);
-        
-        // Разбиваем сообщения на словосочетания
-        const phrases = this.extractPhrases(recentMessages);
-        
-        // Выбираем подходящие словосочетания
-        const selectedPhrases = this.selectRelevantPhrases(phrases, message.text);
-        
-        // Генерируем продолжение через Gemini
-        const response = await this.generateContinuation(selectedPhrases, message.text);
+            if (!randomPhrases || randomPhrases.length === 0) {
+                return "Гусь молчит...";
+            }
 
-        return response;
+            // Получаем последние сообщения для контекста
+            const recentMessages = await this.getRecentMessages(message.chat.id, 10);
+            const context = recentMessages.join('\n');
+
+            // Объединяем фразы
+            const basePhrase = randomPhrases.map(p => p.phrase).join(' ');
+
+            // Генерируем продолжение через Gemini
+            const response = await this.gemini.generateContinuation(
+                basePhrase,
+                context,
+                config.SWEAR_ENABLED
+            );
+
+            return response;
+        } catch (error) {
+            console.error('Error generating response:', error);
+            return "Гусь молчит...";
+        }
     }
 
     updateContext(message) {
@@ -395,18 +412,18 @@ class MessageGenerator {
         }
     }
 
-    async getRecentMessages(chatId) {
+    async getRecentMessages(chatId, limit = 10) {
         try {
-            const { data: phrases } = await this.supabase
-                .from('phrases')
+            const { data: messages } = await this.supabase
+                .from('messages')
                 .select('text')
                 .eq('chat_id', chatId)
                 .order('created_at', { ascending: false })
-                .limit(10);
-            
-            return phrases || [];
+                .limit(limit);
+
+            return messages?.map(m => m.text) || [];
         } catch (error) {
-            console.error('Error getting phrases:', error);
+            console.error('Error getting recent messages:', error);
             return [];
         }
     }
@@ -469,43 +486,90 @@ class MessageGenerator {
 
     async saveMessage(message) {
         try {
-            // Сохраняем сообщение
+            // Сохраняем информацию о чате
             await this.supabase
+                .from('chats')
+                .upsert({
+                    id: message.chat.id,
+                    title: message.chat.title,
+                    type: message.chat.type
+                });
+
+            // Сохраняем информацию о пользователе
+            await this.supabase
+                .from('users')
+                .upsert({
+                    id: message.from.id,
+                    username: message.from.username,
+                    first_name: message.from.first_name,
+                    last_name: message.from.last_name
+                });
+
+            // Сохраняем сообщение
+            const { data: savedMessage } = await this.supabase
                 .from('messages')
                 .insert({
                     message_id: message.message_id,
                     chat_id: message.chat.id,
                     user_id: message.from.id,
+                    reply_to_message_id: message.reply_to_message?.message_id,
                     text: message.text,
-                    timestamp: new Date(message.date * 1000)
-                });
+                    type: 'text'
+                })
+                .select()
+                .single();
 
-            // Разбиваем на словосочетания и сохраняем
+            if (!savedMessage) {
+                throw new Error('Failed to save message');
+            }
+
+            // Разбиваем на фразы и сохраняем
             const words = this.tokenizer.tokenize(message.text.toLowerCase());
             const phrases = [];
             
             // Собираем фразы по 2-3 слова
             for (let i = 0; i < words.length - 1; i++) {
-                phrases.push([words[i], words[i + 1]].join(' '));
+                phrases.push({
+                    chat_id: message.chat.id,
+                    phrase: [words[i], words[i + 1]].join(' '),
+                    message_id: savedMessage.id
+                });
+                
                 if (i < words.length - 2) {
-                    phrases.push([words[i], words[i + 1], words[i + 2]].join(' '));
+                    phrases.push({
+                        chat_id: message.chat.id,
+                        phrase: [words[i], words[i + 1], words[i + 2]].join(' '),
+                        message_id: savedMessage.id
+                    });
                 }
             }
-            
-            // Сохраняем фразы в БД
+
+            // Сохраняем фразы
             if (phrases.length > 0) {
                 await this.supabase
                     .from('phrases')
-                    .insert(
-                        phrases.map(phrase => ({
-                            chat_id: message.chat.id,
-                            phrase: phrase
-                        }))
-                    );
+                    .insert(phrases);
             }
 
         } catch (error) {
             console.error('Error saving message:', error);
+        }
+    }
+
+    async getRandomPhrase(chatId) {
+        try {
+            const { data: phrase } = await this.supabase
+                .from('phrases')
+                .select('phrase')
+                .eq('chat_id', chatId)
+                .order('RANDOM()')
+                .limit(1)
+                .single();
+
+            return phrase?.phrase || null;
+        } catch (error) {
+            console.error('Error getting random phrase:', error);
+            return null;
         }
     }
 }

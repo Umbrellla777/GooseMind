@@ -110,20 +110,25 @@ bot.on('text', async (ctx) => {
         }
 
         // Анализируем сообщение для реакции
-        const reactions = await messageHandler.analyzeForReaction(ctx.message);
-        if (reactions) {
-            try {
-                await ctx.telegram.callApi('setMessageReaction', {
-                    chat_id: ctx.message.chat.id,
-                    message_id: ctx.message.message_id,
-                    reaction: reactions.map(emoji => ({
-                        type: 'emoji',
-                        emoji: emoji
-                    })),
-                    is_big: Math.random() < 0.1 // 10% шанс на большую реакцию
-                });
-            } catch (error) {
-                // Игнорируем ошибки реакций
+        if (Math.random() < config.REACTION_PROBABILITY / 100) {
+            const shouldReact = Math.random() < 0.15; // Дополнительная проверка
+            if (shouldReact) {
+                const reactions = await messageHandler.analyzeForReaction(ctx.message);
+                if (reactions && reactions.length > 0) {
+                    try {
+                        await ctx.telegram.callApi('setMessageReaction', {
+                            chat_id: ctx.message.chat.id,
+                            message_id: ctx.message.message_id,
+                            reaction: reactions.slice(0, 1).map(emoji => ({ // Берем только 1 реакцию
+                                type: 'emoji',
+                                emoji: emoji
+                            })),
+                            is_big: Math.random() < 0.1
+                        });
+                    } catch (error) {
+                        console.error('Reaction error:', error);
+                    }
+                }
             }
         }
 

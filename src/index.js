@@ -3,7 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
-const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(config.BOT_TOKEN);
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
@@ -15,20 +14,17 @@ const messageGenerator = new MessageGenerator(supabase);
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
 
-const startTime = Date.now();
-
-// Добавьте веб-сервер для Railway
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('ShizAI Bot is running!');
-});
-
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
     try {
-        // Проверяем команду настроек
-        if (ctx.message.text === '/shizset') {
+        // Проверяем, не был ли чат обновлен до супергруппы
+        if (ctx.message?.migrate_to_chat_id) {
+            console.log(`Chat ${ctx.chat.id} migrated to ${ctx.message.migrate_to_chat_id}`);
+            return;
+        }
+
+        // Проверяем команды настроек гуся
+        if (ctx.message.text === '/gs' || ctx.message.text === '/goosemind') {
             if (ctx.message.from.username.toLowerCase() !== 'umbrellla777') {
                 return ctx.reply('Только @Umbrellla777 может использовать эту команду');
             }
@@ -46,7 +42,7 @@ bot.on('text', async (ctx) => {
             };
 
             await ctx.reply(
-                `Текущие настройки ShizAI:\n` +
+                `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}`,
                 { reply_markup: keyboard }
@@ -124,6 +120,14 @@ bot.on('text', async (ctx) => {
         }
 
     } catch (error) {
+        // Проверяем ошибку на миграцию чата
+        if (error.response?.parameters?.migrate_to_chat_id) {
+            const newChatId = error.response.parameters.migrate_to_chat_id;
+            console.log(`Retrying with new chat ID: ${newChatId}`);
+            // Обновляем ID чата и пробуем снова
+            ctx.chat.id = newChatId;
+            return ctx.reply(error.on.payload.text);
+        }
         console.error('Error processing message:', error);
         if (ctx.message.from.username === 'Umbrellla777') {
             await ctx.reply('Произошла ошибка при обработке сообщения: ' + error.message);
@@ -194,75 +198,14 @@ bot.catch((err, ctx) => {
     }
 });
 
-// Добавьте команду для проверки статуса
-bot.command('ping', async (ctx) => {
-  const start = Date.now();
-  const msg = await ctx.reply('Проверка...');
-  const responseTime = Date.now() - start;
-  
-  await ctx.telegram.editMessageText(
-    ctx.chat.id,
-    msg.message_id,
-    null,
-    `🏓 Понг!\nВремя ответа: ${responseTime}ms\nАптайм: ${Math.floor((Date.now() - startTime) / 1000)}s`
-  );
-});
-
-// Добавьте периодическую проверку памяти
-setInterval(() => {
-  const memory = process.memoryUsage();
-  console.log(`Использование памяти: ${Math.round(memory.heapUsed / 1024 / 1024)}MB`);
-  
-  // Очистка кэша при превышении лимита
-  if (memory.heapUsed > 450 * 1024 * 1024) { // 450MB
-    messageGenerator.clearCache();
-    console.log('Кэш очищен из-за высокого использования памяти');
-  }
-}, config.MEMORY_CHECK_INTERVAL);
-
-// Измените запуск бота
-async function startBot() {
-  try {
-    await bot.launch();
+// Запуск бота
+bot.launch().then(() => {
     console.log('Бот запущен');
     console.log('Текущая вероятность ответа:', config.RESPONSE_PROBABILITY);
-    
-    // Запускаем веб-сервер
-    server.listen(PORT, () => {
-      console.log(`Веб-сервер запущен на порту ${PORT}`);
-    });
-  } catch (error) {
+}).catch((error) => {
     console.error('Ошибка при запуске бота:', error);
-  }
-}
-
-startBot();
-
-// Обработка остановки
-process.once('SIGINT', () => {
-  bot.stop('SIGINT');
-  server.close();
-});
-process.once('SIGTERM', () => {
-  bot.stop('SIGTERM');
-  server.close();
 });
 
-bot.command('status', async (ctx) => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const memory = process.memoryUsage();
-    
-    await ctx.reply(
-        `📊 Статус бота:\n` +
-        `Аптайм: ${uptime} сек\n` +
-        `Память: ${Math.round(memory.heapUsed / 1024 / 1024)}MB\n` +
-        `Версия: ${require('../package.json').version}`
-    );
-});
-
-// Добавьте обработку ошибок
-process.on('uncaughtException', (error) => {
-    console.error('Необработанная ошибка:', error);
-    // Перезапуск через PM2
-    process.exit(1);
-}); 
+// Graceful shutdown
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM')); 

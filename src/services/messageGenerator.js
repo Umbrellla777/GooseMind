@@ -1,6 +1,7 @@
 const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();
 const PorterStemmerRu = natural.PorterStemmerRu;
+const { GeminiService } = require('./geminiService');
 
 class MessageGenerator {
     constructor(supabase) {
@@ -16,6 +17,12 @@ class MessageGenerator {
         this.wordsCache = new Map();
         this.lastCacheUpdate = null;
         this.CACHE_LIFETIME = 5 * 60 * 1000; // 5 минут
+        
+        // Добавляем историю контекста
+        this.contextHistory = new Map(); // chatId -> последние сообщения
+        this.MAX_CONTEXT_LENGTH = 5; // Хранить последние 5 сообщений для контекста
+        
+        this.gemini = new GeminiService();
     }
 
     async getWordsFromDatabase(chatId, inputText) {
@@ -90,7 +97,7 @@ class MessageGenerator {
         this.wordsCache.forEach((data, word) => {
             wordMap.set(word, {
                 ...data,
-                relevance: this.calculateRelevance(word, Array.from(data.contexts).join(' '), inputStems)
+                relevance: this.calculateRelevance(word, Array.from(data.contexts).join(' '), inputStems, this.getContext(inputText?.chat?.id))
             });
         });
         
@@ -118,33 +125,41 @@ class MessageGenerator {
         return wordMap;
     }
 
-    calculateRelevance(word, context, inputStems) {
+    calculateRelevance(word, context, inputStems, messageContext) {
         let relevance = 0;
         const wordStem = this.stemmer.stem(word);
-        const contextWords = this.tokenizer.tokenize(context);
-        const contextStems = contextWords.map(w => this.stemmer.stem(w));
         
-        // Проверяем совпадение корней слов
+        // Базовая релевантность из существующего кода
         if (inputStems.includes(wordStem)) {
             relevance += 2;
         }
 
-        // Проверяем контекстные связи
-        inputStems.forEach(stem => {
-            if (contextStems.includes(stem)) {
-                relevance += 1;
+        // Учитываем контекст последних сообщений
+        if (messageContext && messageContext.length > 0) {
+            const recentMessages = messageContext
+                .map(msg => msg.text)
+                .join(' ')
+                .toLowerCase();
+            
+            const contextStems = this.tokenizer
+                .tokenize(recentMessages)
+                .map(w => this.stemmer.stem(w));
+            
+            // Добавляем релевантность на основе контекста
+            if (contextStems.includes(wordStem)) {
+                relevance += 0.5;
             }
-        });
+        }
         
         return relevance;
     }
 
-    generateSentence(wordMap) {
+    generateSentence(wordMap, context) {
         const sentence = [];
         const words = Array.from(wordMap.keys());
         
-        // Если слов мало, используем fallback
-        if (words.length < 10) {
+        // Уменьшаем минимальный порог слов
+        if (words.length < 2) {
             return this.generateFallbackSentence();
         }
 
@@ -152,29 +167,22 @@ class MessageGenerator {
         let currentWord = this.selectStartWord(words, wordMap);
         sentence.push(currentWord);
 
-        const targetLength = this.getWeightedRandomLength();
+        // Генерируем случайную длину от 2 до 30 слов
+        const targetLength = Math.floor(Math.random() * 28) + 2;
         let repeatedWords = 0;
-        const maxRepeats = 2; // Максимальное количество повторений слов
+        const maxRepeats = 1; // Запрещаем повторения слов
 
         while (sentence.length < targetLength) {
             const wordData = wordMap.get(currentWord);
             let nextWord = null;
             
-            // Пробуем получить следующее слово из контекста
-            if (wordData?.nextWords.size > 0) {
-                const nextWords = Array.from(wordData.nextWords);
-                nextWord = this.selectRandomWord(nextWords);
-                
-                // Проверяем, не слишком ли часто повторяется слово
-                if (sentence.filter(w => w === nextWord).length >= maxRepeats) {
-                    nextWord = null;
-                }
-            }
-
-            // Если не нашли подходящее слово в контексте, выбираем случайное
-            if (!nextWord) {
-                nextWord = this.selectNextWord(words, sentence, maxRepeats);
-            }
+            // Выбираем случайное слово из доступных, исключая использованные
+            const availableWords = words.filter(word => 
+                !sentence.includes(word)
+            );
+            
+            if (availableWords.length === 0) break;
+            nextWord = availableWords[Math.floor(Math.random() * availableWords.length)];
 
             if (nextWord) {
                 sentence.push(nextWord);
@@ -184,7 +192,7 @@ class MessageGenerator {
             }
         }
 
-        return this.cleanupSentence(sentence);
+        return sentence;
     }
 
     selectRandomWord(words) {
@@ -224,7 +232,7 @@ class MessageGenerator {
         return Math.max(this.minWords, Math.min(this.maxWords, length));
     }
 
-    enhanceSentence(sentence) {
+    async enhanceSentence(sentence) {
         if (!sentence || sentence.length === 0) {
             return "Мне нечего сказать...";
         }
@@ -235,25 +243,75 @@ class MessageGenerator {
         const punctuation = ['.', '!', '...', '?'];
         result += punctuation[Math.floor(Math.random() * punctuation.length)];
 
+        // Улучшаем текст с помощью Gemini
+        try {
+            result = await this.gemini.improveText(result);
+        } catch (error) {
+            console.error('Error improving text:', error);
+        }
+
         return result;
     }
 
     async generateResponse(message) {
         try {
-            // Проверяем содержимое базы
-            await this.checkDatabaseContent(message.chat.id);
-
-            const wordMap = await this.getWordsFromDatabase(message.chat.id, message.text);
-            if (wordMap.size === 0) {
-                return "Мне нечего сказать... (база данных пуста)";
-            }
-
-            const sentence = this.generateSentence(wordMap);
-            return this.enhanceSentence(sentence);
+            return await this.generateLocalResponse(message);
         } catch (error) {
-            console.error('Error generating response:', error);
-            return "Произошла ошибка при генерации ответа.";
+            console.error('Error in generateResponse:', error);
+            return this.generateFallbackResponse(message.text);
         }
+    }
+
+    async generateLocalResponse(message) {
+        // Обновляем контекст для данного чата
+        this.updateContext(message);
+
+        // Получаем слова с учетом контекста
+        const wordMap = await this.getWordsFromDatabase(message.chat.id, message.text);
+        
+        // Если база пуста - используем заготовленные ответы
+        if (wordMap.size === 0) {
+            return this.generateFallbackResponse(message.text);
+        }
+
+        // Генерируем предложение с учетом контекста
+        const sentence = this.generateSentence(wordMap, this.getContext(message.chat.id));
+        return this.enhanceSentence(sentence);
+    }
+
+    updateContext(message) {
+        const chatId = message.chat.id;
+        if (!this.contextHistory.has(chatId)) {
+            this.contextHistory.set(chatId, []);
+        }
+        
+        const context = this.contextHistory.get(chatId);
+        context.push({
+            text: message.text,
+            timestamp: Date.now()
+        });
+        
+        // Оставляем только последние сообщения
+        if (context.length > this.MAX_CONTEXT_LENGTH) {
+            context.shift();
+        }
+    }
+
+    getContext(chatId) {
+        return this.contextHistory.get(chatId) || [];
+    }
+
+    generateFallbackResponse(inputText) {
+        const responses = [
+            "Интересная мысль! Давайте развивать её дальше.",
+            "Хм, нужно подумать над этим...",
+            "А что если посмотреть на это с другой стороны?",
+            "Забавно, я как раз думал о чём-то похожем!",
+            "Это напомнило мне одну историю...",
+        ];
+        
+        // Выбираем случайный ответ
+        return responses[Math.floor(Math.random() * responses.length)];
     }
 
     async checkDatabaseContent(chatId) {

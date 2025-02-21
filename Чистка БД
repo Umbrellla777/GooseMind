@@ -1,0 +1,80 @@
+-- Удаляем некорректные фразы из таблицы phrases
+DELETE FROM phrases
+WHERE 
+    -- Фразы с датой/временем и именами
+    phrase ~ '\[\d{2}\.\d{2}\.\d{4}'
+    OR phrase ~ '\d{2}\.\d{2}\.\d{4}'
+    OR phrase ~ '\d{2}:\d{2}'
+    OR phrase ILIKE '%андрей%'
+    OR phrase ILIKE '%ермаков%'
+    
+    -- Фразы с тире/дефисом
+    OR phrase LIKE '-%' 
+    OR phrase LIKE '%–%'
+    OR phrase LIKE '—%'
+    OR phrase LIKE '%—%'
+    
+    -- Слишком короткие фразы и местоимения
+    OR length(phrase) <= 2
+    OR phrase IN ('ей', 'он', 'ты', 'мы', 'вы', 'их', 'им', 'ею', 'её', 'его')
+    
+    -- Фразы из одного слова
+    OR phrase NOT LIKE '% %'
+    
+    -- Фразы только из служебных слов
+    OR phrase IN (
+        'а у', 'и в', 'но в', 'да и', 'и так', 'вот и',
+        'да', 'нет', 'и', 'в', 'на', 'по', 'за', 'к', 'с',
+        'да все', 'было', 'нет все', 'да нет', 'и все',
+        'а вот', 'вот так', 'и тут', 'а там', 'и там',
+        'а что', 'и что', 'вот что', 'так что',
+        'а как', 'и как', 'вот как', 'так как',
+        'ну да', 'ну нет', 'вот да', 'вот нет'
+    )
+    
+    -- Фразы, начинающиеся со служебных слов и короче 10 символов
+    OR (
+        length(phrase) < 10 
+        AND (
+            phrase LIKE 'а %' OR
+            phrase LIKE 'и %' OR
+            phrase LIKE 'но %' OR
+            phrase LIKE 'да %' OR
+            phrase LIKE 'вот %' OR
+            phrase LIKE 'как %' OR
+            phrase LIKE 'что %' OR
+            phrase LIKE 'ну %' OR
+            phrase LIKE 'то %' OR
+            phrase LIKE 'же %' OR
+            phrase LIKE 'бы %' OR
+            phrase LIKE 'ли %'
+        )
+    )
+    
+    -- Технические фразы
+    OR phrase ~ 'forwarded message'
+    OR phrase LIKE '%http%'
+    OR phrase LIKE '%www%'
+    OR phrase LIKE '%@%'
+    OR phrase ~ '^\s*\d+\s*$'  -- только цифры
+    OR phrase ~ '^\s*[a-zA-Z0-9]+\s*$'  -- только латиница или цифры
+    
+    -- Фразы с квадратными скобками
+    OR phrase LIKE '%[%'
+    OR phrase LIKE '%]%'
+    
+    -- Фразы с запятой в конце
+    OR phrase LIKE '%,'
+    
+    -- Слишком длинные фразы
+    OR length(phrase) > 100;
+
+-- Для предварительного просмотра замените DELETE на этот SELECT
+/*
+SELECT phrase, length(phrase) as len
+FROM phrases
+WHERE 
+    -- те же условия, что и выше
+    ...
+ORDER BY len, phrase;
+*/

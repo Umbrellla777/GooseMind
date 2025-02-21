@@ -76,18 +76,21 @@ class GeminiService {
 
     async generateContinuation(basePhrase, context, lastMessage, swearProbability) {
         try {
-            // Проверяем вероятность матов в процентах
             const useSwears = Math.random() * 100 < swearProbability;
             
             // Получаем маты из базовой фразы и контекста
             const swearWords = this.extractSwearWords(basePhrase + ' ' + context);
             
             // Разбиваем базовую фразу на отдельные фразы и выбираем от 1 до 3 случайных
-            const phrases = basePhrase.split(/[.!?]+/).filter(p => p.trim().length > 0);
-            const selectedCount = Math.floor(Math.random() * 3) + 1; // от 1 до 3
+            const phrases = basePhrase.split(/[.!?]+/).filter(p => {
+                const cleaned = p.trim().toLowerCase();
+                // Исключаем фразы, которые являются частью последнего сообщения
+                return cleaned.length > 0 && !lastMessage.toLowerCase().includes(cleaned);
+            });
+            
+            const selectedCount = Math.floor(Math.random() * 3) + 1;
             const selectedPhrases = [];
             
-            // Выбираем случайные уникальные фразы
             while (selectedPhrases.length < selectedCount && phrases.length > 0) {
                 const index = Math.floor(Math.random() * phrases.length);
                 selectedPhrases.push(phrases[index].trim());
@@ -96,10 +99,7 @@ class GeminiService {
 
             const prompt = `Контекст: Ты - полуумный гусь, который отвечает на сообщения в чате.
                            
-                           Последние 10 сообщений в чате:
-                           "${context}"
-                           
-                           Последнее сообщение:
+                           Последнее сообщение от собеседника:
                            "${lastMessage}"
                            
                            У меня есть ${selectedPhrases.length} случайных фраз из базы:
@@ -111,14 +111,15 @@ class GeminiService {
                            Задача:
                            1. Составь ОДНО связное предложение, используя ВСЕ предоставленные фразы
                            2. Фразы можно объединять, изменять их форму и порядок слов
-                           3. Ответ должен быть связан с последним сообщением
-                           4. Учитывай контекст предыдущих сообщений
+                           3. НЕ ПОВТОРЯЙ последнее сообщение собеседника
+                           4. Придумай что-то новое, а не копируй чужие фразы
                            5. ${useSwears && swearWords.length > 0 ? 
                               'ОБЯЗАТЕЛЬНО используй один из предоставленных матов' : 
                               'НЕ используй маты'}
                            6. Сохраняй разговорный стиль и юмор
                            7. Ответ должен быть НЕ ДЛИННЕЕ 25 слов
                            8. Все фразы ДОЛЖНЫ быть использованы в ответе
+                           9. НЕ НАЧИНАЙ ответ с повторения вопроса собеседника
                            
                            Отвечай ТОЛЬКО готовым предложением.`;
 

@@ -266,70 +266,78 @@ class MessageGenerator {
         try {
             console.log('Начало генерации ответа');
 
-            // Получаем 1-3 случайные фразы из всей базы
-            const phraseCount = Math.floor(Math.random() * 3) + 1;
-            console.log(`Пытаемся получить ${phraseCount} случайных фраз`);
-
-            // Сначала получим общее количество фраз
-            const { count } = await this.supabase
+            // Получаем все фразы из текущего чата
+            const { data: chatPhrases, error: phrasesError } = await this.supabase
                 .from('phrases')
-                .select('*', { count: 'exact', head: true });
+                .select('phrase')
+                .eq('chat_id', message.chat.id);
 
-            if (!count) {
-                console.log('Фразы не найдены');
+            if (phrasesError) {
+                console.error('Ошибка получения фраз:', phrasesError);
                 return "Гусь молчит...";
             }
 
-            // Получаем случайные фразы через offset
-            const randomPhrases = [];
-            for (let i = 0; i < phraseCount; i++) {
-                const randomOffset = Math.floor(Math.random() * count);
-                const { data: phrases, error } = await this.supabase
+            // Если в чате мало фраз, добавляем из других чатов
+            let allPhrases = chatPhrases || [];
+            if (allPhrases.length < 20) {
+                const { data: otherPhrases } = await this.supabase
                     .from('phrases')
                     .select('phrase')
-                    .range(randomOffset, randomOffset)
-                    .limit(1);
+                    .neq('chat_id', message.chat.id);
 
-                if (!error && phrases && phrases.length > 0) {
-                    randomPhrases.push(phrases[0]);
+                if (otherPhrases) {
+                    allPhrases = allPhrases.concat(otherPhrases);
                 }
             }
 
-            console.log('Найденные фразы:', randomPhrases);
+            console.log(`Всего найдено фраз: ${allPhrases.length}`);
 
-            if (randomPhrases.length === 0) {
+            if (allPhrases.length === 0) {
                 console.log('Фразы не найдены');
                 return "Гусь молчит...";
             }
 
-            // Получаем последние 10 сообщений для контекста
-            console.log('Получаем последние сообщения');
-            const { data: recentMessages, error: messagesError } = await this.supabase
+            // Выбираем случайное количество фраз (1-3)
+            const phraseCount = Math.floor(Math.random() * 3) + 1;
+            const selectedPhrases = [];
+
+            // Выбираем случайные уникальные фразы
+            while (selectedPhrases.length < phraseCount && allPhrases.length > 0) {
+                const index = Math.floor(Math.random() * allPhrases.length);
+                const phrase = allPhrases[index].phrase;
+                
+                // Проверяем, что фраза не является частью последнего сообщения
+                if (!message.text.toLowerCase().includes(phrase.toLowerCase())) {
+                    selectedPhrases.push(phrase);
+                }
+                
+                // Удаляем использованную фразу
+                allPhrases.splice(index, 1);
+            }
+
+            console.log('Выбранные фразы:', selectedPhrases);
+
+            // Получаем контекст из последних сообщений
+            const { data: recentMessages } = await this.supabase
                 .from('messages')
                 .select('text')
                 .eq('chat_id', message.chat.id)
                 .order('created_at', { ascending: false })
                 .limit(10);
 
-            if (messagesError) {
-                console.error('Ошибка получения сообщений:', messagesError);
-            }
-
-            console.log('Последние сообщения:', recentMessages?.length || 0);
-
             const context = recentMessages?.map(m => m.text).join('\n') || '';
 
-            // Объединяем случайные фразы
-            const basePhrase = randomPhrases.map(p => p.phrase).join(' ');
-            console.log('Базовая фраза для генерации:', basePhrase);
+            // Объединяем фразы для Gemini
+            const basePhrase = selectedPhrases.join('. ');
+            console.log('Базовые фразы для генерации:', basePhrase);
 
-            // Генерируем ответ через Gemini
+            // Генерируем ответ
             console.log('Отправляем запрос в Gemini');
             const response = await this.gemini.generateContinuation(
                 basePhrase,
                 context,
                 message.text,
-                config.SWEAR_ENABLED
+                config.SWEAR_PROBABILITY
             );
 
             console.log('Ответ от Gemini:', response);
@@ -566,6 +574,9 @@ class MessageGenerator {
                     phrase.includes('—')) {
                     return false;
                 }
+
+                // Проверяем, не является ли фраза вопросом собеседника
+                if (phrase.toLowerCase().endsWith('?')) return false;
 
                 return true;
             };

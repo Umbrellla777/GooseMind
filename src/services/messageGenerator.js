@@ -431,3 +431,5 @@ class MessageGenerator {
         return [...template, this.selectRandomWord(Array.from(this.wordsCache.keys()))];
     }
 }
+
+module.exports = { MessageGenerator };

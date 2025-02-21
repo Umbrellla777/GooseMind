@@ -1,7 +1,7 @@
 const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
-const { MessageGenerator } = require('./services/messageGenerator');
+const MessageGenerator = require('./services/messageGenerator').MessageGenerator;
 const config = require('./config');
 
 const bot = new Telegraf(config.BOT_TOKEN);

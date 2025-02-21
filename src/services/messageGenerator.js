@@ -568,39 +568,33 @@ class MessageGenerator {
 
     async saveMessageDirect(message) {
         try {
-            console.log('Начало сохранения сообщения:', {
+            console.log('Начало прямого сохранения сообщения:', {
                 text: message.text.substring(0, 50),
                 chat_id: message.chat.id
             });
 
             // Сохраняем чат
-            const { error: chatError } = await this.supabase
+            await this.supabase
                 .from('chats')
-                .upsert({
+                .insert({
                     id: message.chat.id,
                     title: message.chat.title || '',
                     type: message.chat.type || 'private'
-                });
-
-            if (chatError) {
-                console.error('Ошибка сохранения чата:', chatError);
-                return;
-            }
+                })
+                .onConflict('id')
+                .merge();
 
             // Сохраняем пользователя
-            const { error: userError } = await this.supabase
+            await this.supabase
                 .from('users')
-                .upsert({
+                .insert({
                     id: message.from.id,
                     username: message.from.username || '',
                     first_name: message.from.first_name || '',
                     last_name: message.from.last_name || ''
-                });
-
-            if (userError) {
-                console.error('Ошибка сохранения пользователя:', userError);
-                return;
-            }
+                })
+                .onConflict('id')
+                .merge();
 
             // Сохраняем сообщение
             const { data: savedMessage, error: messageError } = await this.supabase
@@ -616,30 +610,32 @@ class MessageGenerator {
                 .single();
 
             if (messageError) {
+                if (messageError.code === '23505') { // Unique violation
+                    console.log('Сообщение уже существует, пропускаем');
+                    return null;
+                }
                 console.error('Ошибка сохранения сообщения:', messageError);
-                return;
+                return null;
             }
 
-            // Разбиваем на фразы по 2-3 слова
+            // Разбиваем на фразы
             const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
             const phrases = [];
 
             for (let i = 0; i < words.length - 1; i++) {
                 // Фраза из 2 слов
-                if (i < words.length - 1) {
-                    phrases.push({
-                        chat_id: message.chat.id,
-                        phrase: `${words[i]} ${words[i + 1]}`,
-                        message_id: savedMessage.id
-                    });
-                }
+                phrases.push({
+                    chat_id: message.chat.id,
+                    message_id: savedMessage.id,
+                    phrase: `${words[i]} ${words[i + 1]}`
+                });
 
                 // Фраза из 3 слов
                 if (i < words.length - 2) {
                     phrases.push({
                         chat_id: message.chat.id,
-                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`,
-                        message_id: savedMessage.id
+                        message_id: savedMessage.id,
+                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`
                     });
                 }
             }
@@ -652,14 +648,15 @@ class MessageGenerator {
 
                 if (phrasesError) {
                     console.error('Ошибка сохранения фраз:', phrasesError);
-                    return;
+                } else {
+                    console.log(`Сохранено ${phrases.length} фраз`);
                 }
-                console.log(`Сохранено ${phrases.length} фраз`);
             }
 
             return savedMessage;
         } catch (error) {
             console.error('Ошибка прямого сохранения:', error);
+            return null;
         }
     }
 }

@@ -267,41 +267,62 @@ class MessageGenerator {
             // Обновляем контекст для данного чата
             this.updateContext(message);
 
-            // Получаем фразы из БД
+            // Получаем фразы из БД с учетом матов
             const { data: phrases } = await this.supabase
                 .from('phrases')
-                .select('phrase')
+                .select('*')
                 .eq('chat_id', message.chat.id)
+                .eq('has_swear', Math.random() < config.SWEAR_CHANCE / 100)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(50);
 
             if (!phrases || phrases.length === 0) {
                 console.log('Нет фраз в БД');
                 return 'Гусь молчит...';
             }
 
-            // Анализируем входное сообщение через Gemini для понимания контекста
-            const analysis = await this.gemini.analyzeMessage(message.text);
-            
-            // Выбираем наиболее подходящие фразы
-            const relevantPhrases = phrases
-                .map(p => ({
-                    phrase: p.phrase,
-                    score: this.calculatePhraseRelevance(p.phrase.split(' '), analysis)
-                }))
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 3)  // Берем топ-3 фразы
-                .map(p => p.phrase);
+            // Группируем фразы по типам
+            const phrasesByType = {
+                adj_noun: phrases.filter(p => p.type === 'adj_noun'),
+                noun_noun: phrases.filter(p => p.type === 'noun_noun'),
+                verb_noun: phrases.filter(p => p.type === 'verb_noun'),
+                adv_verb: phrases.filter(p => p.type === 'adv_verb'),
+                general: phrases.filter(p => p.type === 'general')
+            };
 
-            console.log('Выбранные фразы:', relevantPhrases);
+            // Строим предложение из фраз
+            const sentence = [];
+            
+            // Начинаем с существительного или прилагательного + существительного
+            const startPhrases = [...phrasesByType.adj_noun, ...phrasesByType.noun_noun];
+            if (startPhrases.length > 0) {
+                sentence.push(startPhrases[Math.floor(Math.random() * startPhrases.length)].phrase);
+            }
+            
+            // Добавляем глагол с существительным или наречием
+            const actionPhrases = [...phrasesByType.verb_noun, ...phrasesByType.adv_verb];
+            if (actionPhrases.length > 0) {
+                sentence.push(actionPhrases[Math.floor(Math.random() * actionPhrases.length)].phrase);
+            }
+            
+            // Если предложение слишком короткое, добавляем общую фразу
+            if (sentence.length < 2 && phrasesByType.general.length > 0) {
+                sentence.push(phrasesByType.general[Math.floor(Math.random() * phrasesByType.general.length)].phrase);
+            }
+
+            if (sentence.length === 0) {
+                return 'Гусь молчит...';
+            }
 
             // Используем Gemini только для связки фраз
-            const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
             const response = await this.gemini.generateContinuation(
-                relevantPhrases.join(' '), 
+                sentence.join(' '), 
                 message.text,
-                useSwears
+                Math.random() < config.SWEAR_CHANCE / 100
             );
+
+            console.log('Исходные фразы:', sentence);
+            console.log('Сгенерированный ответ:', response);
 
             return response;
         } catch (error) {
@@ -509,25 +530,78 @@ class MessageGenerator {
                     timestamp: new Date(message.date * 1000)
                 });
 
-            // Разбиваем на словосочетания
-            const words = message.text.toLowerCase().split(/\s+/);
+            // Токенизация с сохранением знаков препинания
+            const text = message.text.toLowerCase();
+            const words = text.match(/[а-яё]+|[.,!?;:]/g) || [];
+            
             const phrases = [];
             
-            // Собираем фразы по 2-3 слова с сохранением порядка
+            // Анализируем каждое слово и формируем словосочетания
             for (let i = 0; i < words.length - 1; i++) {
-                // Двухсловные фразы
-                phrases.push({
-                    chat_id: message.chat.id,
-                    phrase: `${words[i]} ${words[i + 1]}`,
-                    order: i
-                });
+                const currentWord = words[i];
+                // Пропускаем знаки препинания как первое слово
+                if (/[.,!?;:]/.test(currentWord)) continue;
                 
-                // Трехсловные фразы
-                if (i < words.length - 2) {
+                // Ищем следующее слово (пропуская знаки препинания)
+                let nextIndex = i + 1;
+                while (nextIndex < words.length && /[.,!?;:]/.test(words[nextIndex])) {
+                    nextIndex++;
+                }
+                if (nextIndex >= words.length) break;
+                
+                const nextWord = words[nextIndex];
+                
+                // Формируем словосочетания на основе частей речи
+                // (здесь можно добавить более сложную логику определения частей речи)
+                if (this.isNoun(currentWord)) {
+                    // существительное + прилагательное
+                    if (this.isAdjective(nextWord)) {
+                        phrases.push({
+                            chat_id: message.chat.id,
+                            phrase: `${nextWord} ${currentWord}`, // прил + сущ
+                            type: 'adj_noun',
+                            has_swear: this.hasSwearWord([currentWord, nextWord])
+                        });
+                    }
+                    // существительное + существительное
+                    if (this.isNoun(nextWord)) {
+                        phrases.push({
+                            chat_id: message.chat.id,
+                            phrase: `${currentWord} ${nextWord}`,
+                            type: 'noun_noun',
+                            has_swear: this.hasSwearWord([currentWord, nextWord])
+                        });
+                    }
+                }
+                
+                if (this.isVerb(currentWord)) {
+                    // глагол + существительное
+                    if (this.isNoun(nextWord)) {
+                        phrases.push({
+                            chat_id: message.chat.id,
+                            phrase: `${currentWord} ${nextWord}`,
+                            type: 'verb_noun',
+                            has_swear: this.hasSwearWord([currentWord, nextWord])
+                        });
+                    }
+                    // глагол + наречие
+                    if (this.isAdverb(nextWord)) {
+                        phrases.push({
+                            chat_id: message.chat.id,
+                            phrase: `${nextWord} ${currentWord}`, // нареч + глаг
+                            type: 'adv_verb',
+                            has_swear: this.hasSwearWord([currentWord, nextWord])
+                        });
+                    }
+                }
+                
+                // Если не удалось определить часть речи, сохраняем как общую фразу
+                if (phrases.length === 0) {
                     phrases.push({
                         chat_id: message.chat.id,
-                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`,
-                        order: i
+                        phrase: `${currentWord} ${nextWord}`,
+                        type: 'general',
+                        has_swear: this.hasSwearWord([currentWord, nextWord])
                     });
                 }
             }
@@ -546,6 +620,31 @@ class MessageGenerator {
         } catch (error) {
             console.error('Error saving message:', error);
         }
+    }
+
+    // Простые проверки на части речи (можно расширить)
+    isNoun(word) {
+        // Типичные окончания существительных
+        return /[аеёиоуыэюя]$|[аеёиоуыэюя][йхм]$|[аеёиоуыэюя]ми$|ость$|ство$|тель$/i.test(word);
+    }
+
+    isVerb(word) {
+        // Типичные окончания глаголов
+        return /ть$|ет$|ут$|ат$|ит$|ют$|ал$|ил$|ел$/i.test(word);
+    }
+
+    isAdjective(word) {
+        // Типичные окончания прилагательных
+        return /[ыи]й$|[ая]я$|[ое]е$|ого$|его$|ому$|ему$/i.test(word);
+    }
+
+    isAdverb(word) {
+        // Типичные окончания наречий
+        return /о$|[аеиу]$|ски$/i.test(word);
+    }
+
+    hasSwearWord(words) {
+        return words.some(word => this.isSwearWord(word));
     }
 }
 

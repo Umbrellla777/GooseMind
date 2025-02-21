@@ -48,11 +48,12 @@ bot.on('text', async (ctx) => {
             };
 
             await ctx.reply(
-                `Текущие настройки Полуумного Гуся:\n` +
-                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Множитель матов: ${config.SWEAR_MULTIPLIER}\n` +
-                `Шанс матов: ${(config.SWEAR_CHANCE * 100).toFixed(0)}%`,
+                `🦢 Текущие настройки Полуумного Гуся:\n\n` +
+                `⚡️ Частота ответов: ${config.RESPONSE_PROBABILITY}%\n` +
+                `😎 Частота реакций: ${config.REACTION_PROBABILITY}%\n` +
+                `🤬 Множитель матов: ${config.SWEAR_MULTIPLIER.toFixed(1)}x\n` +
+                `🎲 Шанс матов: ${config.SWEAR_CHANCE}%\n\n` +
+                `ℹ️ Гусь использует фразы из предыдущих сообщений`,
                 { reply_markup: keyboard }
             );
             return;
@@ -150,7 +151,7 @@ bot.on('text', async (ctx) => {
         if (awaitingSwearChance && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
             const chance = parseInt(ctx.message.text);
             if (!isNaN(chance) && chance >= 0 && chance <= 100) {
-                config.SWEAR_CHANCE = chance / 100;
+                config.SWEAR_CHANCE = chance;
                 await ctx.reply(`✅ Шанс матов установлен на ${chance}%`);
                 awaitingSwearChance = false;
                 return;
@@ -265,7 +266,7 @@ bot.action('set_swear_chance', async (ctx) => {
             '🎲 Введите шанс использования матов (от 0 до 100%).\n' +
             'Например: 30 - маты будут в 30% предложений\n' +
             '0 - маты не используются\n' +
-            'Текущее значение: ' + (config.SWEAR_CHANCE * 100).toFixed(0) + '%'
+            'Текущее значение: ' + config.SWEAR_CHANCE + '%'
         );
     } catch (error) {
         console.error('Ошибка при установке шанса матов:', error);

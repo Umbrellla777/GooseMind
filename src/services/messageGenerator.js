@@ -491,28 +491,51 @@ class MessageGenerator {
                 return;
             }
 
-            console.log('Начало сохранения сообщения:', message.text.substring(0, 50));
+            console.log('Начало сохранения сообщения:', {
+                message_id: message.message_id,
+                chat_id: message.chat.id,
+                text: message.text.substring(0, 50)
+            });
 
             // Транзакция для атомарного сохранения
             const { data: result, error } = await this.supabase.rpc('save_message_with_phrases', {
                 p_message_id: message.message_id,
                 p_chat_id: message.chat.id,
-                p_chat_title: message.chat.title,
-                p_chat_type: message.chat.type,
-                p_user_id: message.from.id,
-                p_username: message.from.username,
-                p_first_name: message.from.first_name,
-                p_last_name: message.from.last_name,
-                p_reply_to_message_id: message.reply_to_message?.message_id,
+                p_chat_title: message.chat?.title || '',
+                p_chat_type: message.chat?.type || 'private',
+                p_user_id: message.from?.id,
+                p_username: message.from?.username || '',
+                p_first_name: message.from?.first_name || '',
+                p_last_name: message.from?.last_name || '',
+                p_reply_to_message_id: message.reply_to_message?.message_id || null,
                 p_text: message.text,
                 p_message_type: 'text'
             });
 
             if (error) {
-                throw error;
+                console.error('Ошибка сохранения сообщения:', {
+                    error: error.message,
+                    details: error.details,
+                    hint: error.hint
+                });
+                return;
             }
 
-            console.log('Сообщение успешно сохранено, ID:', result.message_id);
+            console.log('Сообщение успешно сохранено:', {
+                result,
+                message_id: message.message_id
+            });
+
+            // Проверим содержимое таблиц
+            const { data: phrases } = await this.supabase
+                .from('phrases')
+                .select('*')
+                .eq('chat_id', message.chat.id)
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            console.log('Последние фразы:', phrases);
+
             return result;
 
         } catch (error) {
@@ -534,6 +557,98 @@ class MessageGenerator {
         } catch (error) {
             console.error('Error getting random phrase:', error);
             return null;
+        }
+    }
+
+    async saveMessageDirect(message) {
+        try {
+            // Сохраняем чат
+            const { error: chatError } = await this.supabase
+                .from('chats')
+                .upsert({
+                    id: message.chat.id,
+                    title: message.chat.title || '',
+                    type: message.chat.type || 'private'
+                });
+
+            if (chatError) {
+                console.error('Ошибка сохранения чата:', chatError);
+                return;
+            }
+
+            // Сохраняем пользователя
+            const { error: userError } = await this.supabase
+                .from('users')
+                .upsert({
+                    id: message.from.id,
+                    username: message.from.username || '',
+                    first_name: message.from.first_name || '',
+                    last_name: message.from.last_name || ''
+                });
+
+            if (userError) {
+                console.error('Ошибка сохранения пользователя:', userError);
+                return;
+            }
+
+            // Сохраняем сообщение
+            const { data: savedMessage, error: messageError } = await this.supabase
+                .from('messages')
+                .insert({
+                    message_id: message.message_id,
+                    chat_id: message.chat.id,
+                    user_id: message.from.id,
+                    reply_to_message_id: message.reply_to_message?.message_id,
+                    text: message.text,
+                    type: 'text'
+                })
+                .select()
+                .single();
+
+            if (messageError) {
+                console.error('Ошибка сохранения сообщения:', messageError);
+                return;
+            }
+
+            // Разбиваем на фразы
+            const words = message.text.toLowerCase().split(/\s+/);
+            const phrases = [];
+
+            for (let i = 0; i < words.length - 1; i++) {
+                // Фраза из 2 слов
+                phrases.push({
+                    chat_id: message.chat.id,
+                    phrase: `${words[i]} ${words[i + 1]}`,
+                    message_id: savedMessage.id
+                });
+
+                // Фраза из 3 слов
+                if (i < words.length - 2) {
+                    phrases.push({
+                        chat_id: message.chat.id,
+                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`,
+                        message_id: savedMessage.id
+                    });
+                }
+            }
+
+            // Сохраняем фразы
+            if (phrases.length > 0) {
+                const { error: phrasesError } = await this.supabase
+                    .from('phrases')
+                    .insert(phrases);
+
+                if (phrasesError) {
+                    console.error('Ошибка сохранения фраз:', phrasesError);
+                    return;
+                }
+
+                console.log(`Сохранено ${phrases.length} фраз`);
+            }
+
+            return savedMessage;
+        } catch (error) {
+            console.error('Ошибка прямого сохранения:', error);
         }
     }
 }

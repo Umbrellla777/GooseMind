@@ -112,8 +112,13 @@ bot.on('text', async (ctx) => {
             }
         }
 
-        // Сохраняем сообщение
-        await messageHandler.saveMessage(ctx.message);
+        // Сначала пробуем через процедуру
+        const result = await messageHandler.saveMessage(ctx.message);
+        if (!result) {
+            // Если не получилось, пробуем прямое сохранение
+            console.log('Пробуем прямое сохранение...');
+            await messageHandler.saveMessageDirect(ctx.message);
+        }
         
         // Проверяем упоминание бота
         if (messageHandler.isBotMentioned(ctx.message.text)) {
@@ -159,6 +164,7 @@ bot.on('text', async (ctx) => {
         }
 
     } catch (error) {
+        console.error('Ошибка сохранения:', error);
         // Проверяем ошибку на миграцию чата
         if (error.response?.parameters?.migrate_to_chat_id) {
             const newChatId = error.response.parameters.migrate_to_chat_id;

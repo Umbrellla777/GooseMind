@@ -270,21 +270,34 @@ class MessageGenerator {
             const phraseCount = Math.floor(Math.random() * 3) + 1;
             console.log(`Пытаемся получить ${phraseCount} случайных фраз`);
 
-            // Используем правильный синтаксис для случайной сортировки в Postgres
-            const { data: randomPhrases, error: phrasesError } = await this.supabase
+            // Сначала получим общее количество фраз
+            const { count } = await this.supabase
                 .from('phrases')
-                .select('phrase')
-                .order('random()')  // было 'RANDOM()', теперь 'random()'
-                .limit(phraseCount);
+                .select('*', { count: 'exact', head: true });
 
-            if (phrasesError) {
-                console.error('Ошибка получения фраз:', phrasesError);
+            if (!count) {
+                console.log('Фразы не найдены');
                 return "Гусь молчит...";
+            }
+
+            // Получаем случайные фразы через offset
+            const randomPhrases = [];
+            for (let i = 0; i < phraseCount; i++) {
+                const randomOffset = Math.floor(Math.random() * count);
+                const { data: phrases, error } = await this.supabase
+                    .from('phrases')
+                    .select('phrase')
+                    .range(randomOffset, randomOffset)
+                    .limit(1);
+
+                if (!error && phrases && phrases.length > 0) {
+                    randomPhrases.push(phrases[0]);
+                }
             }
 
             console.log('Найденные фразы:', randomPhrases);
 
-            if (!randomPhrases || randomPhrases.length === 0) {
+            if (randomPhrases.length === 0) {
                 console.log('Фразы не найдены');
                 return "Гусь молчит...";
             }

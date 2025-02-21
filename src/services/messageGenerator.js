@@ -192,12 +192,14 @@ class MessageGenerator {
 
     generateSentence(wordMap, context) {
         // В начале генерации определяем, будут ли маты в этом предложении
-        const useSwears = Math.random() < config.SWEAR_CHANCE;
+        const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
         
         const sentence = [];
         const words = Array.from(wordMap.keys());
         
-        if (words.length < 2) {
+        // Требуем минимум 3 реальных слова из БД
+        if (words.length < 3) {
+            console.log('Недостаточно слов в БД:', words);
             return this.generateFallbackSentence();
         }
 
@@ -206,7 +208,8 @@ class MessageGenerator {
             ? words 
             : words.filter(word => !this.isSwearWord(word));
         
-        if (availableWords.length < 2) {
+        if (availableWords.length < 3) {
+            console.log('Недостаточно доступных слов после фильтрации:', availableWords);
             return this.generateFallbackSentence();
         }
 
@@ -215,8 +218,6 @@ class MessageGenerator {
 
         // Уменьшаем длину до 3-8 слов
         const targetLength = Math.floor(Math.random() * 5) + 3;
-        let repeatedWords = 0;
-        const maxRepeats = 1; // Запрещаем повторения слов
 
         while (sentence.length < targetLength) {
             const wordData = wordMap.get(currentWord);
@@ -236,6 +237,12 @@ class MessageGenerator {
             } else {
                 break;
             }
+        }
+
+        // Если получилось слишком короткое предложение, генерируем заново
+        if (sentence.length < 3) {
+            console.log('Слишком короткое предложение:', sentence);
+            return this.generateFallbackSentence();
         }
 
         return sentence;
@@ -404,17 +411,8 @@ class MessageGenerator {
     }
 
     generateFallbackSentence() {
-        const templates = [
-            ['я', 'думаю', 'что'],
-            ['возможно', 'стоит'],
-            ['интересно', 'а'],
-            ['хм', 'давайте', 'подумаем'],
-            ['а', 'что', 'если'],
-            ['забавно', 'но'],
-        ];
-        
-        const template = templates[Math.floor(Math.random() * templates.length)];
-        return [...template, this.selectRandomWord(Array.from(this.wordsCache.keys()))];
+        // Возвращаем простое сообщение, если в БД недостаточно слов
+        return ['Гусь', 'учится', 'говорить'];
     }
 
     async getRelevantMessagesFromDB(keywords) {

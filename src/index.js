@@ -1,10 +1,21 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
 
-const bot = new Telegraf(config.BOT_TOKEN);
+// Настройки для бота
+const botOptions = {
+    telegram: {
+        // Увеличим таймауты
+        apiRoot: 'https://api.telegram.org',
+        timeout: 30000,
+        webhookReply: false
+    },
+    handlerTimeout: 90000
+};
+
+const bot = new Telegraf(config.BOT_TOKEN, botOptions);
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
@@ -13,8 +24,7 @@ const messageGenerator = new MessageGenerator(supabase);
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
-let awaitingSwearMultiplier = false;
-let awaitingSwearChance = false;
+let awaitingSwearToggle = false;
 
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
@@ -38,8 +48,7 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '🤬 Множитель матов', callback_data: 'set_swear_multiplier' },
-                        { text: '🎲 Шанс матов', callback_data: 'set_swear_chance' }
+                        { text: config.SWEAR_ENABLED ? '🤬 Маты: ВКЛ' : '😇 Маты: ВЫКЛ', callback_data: 'toggle_swears' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -51,8 +60,7 @@ bot.on('text', async (ctx) => {
                 `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Множитель матов: ${config.SWEAR_MULTIPLIER}\n` +
-                `Шанс матов: ${(config.SWEAR_CHANCE * 100).toFixed(0)}%`,
+                `Маты: ${config.SWEAR_ENABLED ? 'включены' : 'выключены'}`,
                 { reply_markup: keyboard }
             );
             return;
@@ -132,39 +140,6 @@ bot.on('text', async (ctx) => {
             }
         }
 
-        // Добавляем обработку ввода множителя в обработчик сообщений
-        if (awaitingSwearMultiplier && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const multiplier = parseFloat(ctx.message.text);
-            if (!isNaN(multiplier) && multiplier >= 0 && multiplier <= 10) {
-                // Округляем до ближайшего шага 0.2
-                const roundedMultiplier = Math.round(multiplier * 5) / 5;
-                config.SWEAR_MULTIPLIER = roundedMultiplier;
-                const message = multiplier === 0 
-                    ? '✅ Маты отключены' 
-                    : `✅ Множитель матов установлен на ${roundedMultiplier.toFixed(1)}`;
-                await ctx.reply(message);
-                awaitingSwearMultiplier = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 10');
-                return;
-            }
-        }
-
-        // Добавляем обработку ввода шанса матов
-        if (awaitingSwearChance && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const chance = parseInt(ctx.message.text);
-            if (!isNaN(chance) && chance >= 0 && chance <= 100) {
-                config.SWEAR_CHANCE = chance / 100;
-                await ctx.reply(`✅ Шанс матов установлен на ${chance}%`);
-                awaitingSwearChance = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
-                return;
-            }
-        }
-
     } catch (error) {
         // Проверяем ошибку на миграцию чата
         if (error.response?.parameters?.migrate_to_chat_id) {
@@ -236,55 +211,61 @@ bot.action('set_reaction_probability', async (ctx) => {
     }
 });
 
-// Добавляем обработчик для установки множителя матов
-bot.action('set_swear_multiplier', async (ctx) => {
+// Добавляем новый обработчик для toggle_swears
+bot.action('toggle_swears', async (ctx) => {
     try {
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
             return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
         }
         
-        awaitingSwearMultiplier = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '🤬 Введите новый множитель для матов (от 0 до 10, шаг 0.2).\n' +
-            'Например: 1.4 - маты будут встречаться в 1.4 раза чаще\n' +
-            '0 - маты отключены\n' +
-            'Текущее значение: ' + config.SWEAR_MULTIPLIER.toFixed(1)
-        );
-    } catch (error) {
-        console.error('Ошибка при установке множителя матов:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
-
-// Добавляем обработчик для установки шанса матов
-bot.action('set_swear_chance', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
+        // Переключаем состояние
+        config.SWEAR_ENABLED = !config.SWEAR_ENABLED;
         
-        awaitingSwearChance = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '🎲 Введите шанс использования матов (от 0 до 100%).\n' +
-            'Например: 30 - маты будут в 30% предложений\n' +
-            '0 - маты не используются\n' +
-            'Текущее значение: ' + (config.SWEAR_CHANCE * 100).toFixed(0) + '%'
+        // Обновляем сообщение с настройками
+        const keyboard = ctx.callbackQuery.message.reply_markup;
+        // Находим и обновляем кнопку с матами
+        keyboard.inline_keyboard[1][0] = {
+            text: config.SWEAR_ENABLED ? '🤬 Маты: ВКЛ' : '😇 Маты: ВЫКЛ',
+            callback_data: 'toggle_swears'
+        };
+
+        await ctx.editMessageText(
+            `Текущие настройки Полуумного Гуся:\n` +
+            `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+            `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+            `Маты: ${config.SWEAR_ENABLED ? 'включены' : 'выключены'}`,
+            { reply_markup: keyboard }
+        );
+
+        await ctx.answerCbQuery(
+            config.SWEAR_ENABLED ? 'Маты включены' : 'Маты выключены'
         );
     } catch (error) {
-        console.error('Ошибка при установке шанса матов:', error);
+        console.error('Ошибка при переключении матов:', error);
         await ctx.answerCbQuery('Произошла ошибка');
     }
 });
 
-// Обработка ошибок
+// Добавим обработку ошибок подключения
 bot.catch((err, ctx) => {
     console.error('Ошибка Telegraf:', err);
-    if (ctx.from?.username === 'Umbrellla777') {
-        ctx.reply('Произошла ошибка в работе бота: ' + err.message);
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET') {
+        console.log('Переподключение к Telegram...');
+        bot.telegram.getMe().catch(e => {
+            console.error('Ошибка переподключения:', e);
+        });
+    }
+    if (ctx?.from?.username === 'Umbrellla777') {
+        ctx.reply('Произошла ошибка в работе бота: ' + err.message).catch(() => {});
     }
 });
+
+// Добавим периодическую проверку соединения
+setInterval(() => {
+    bot.telegram.getMe().catch(err => {
+        console.error('Ошибка проверки соединения:', err);
+    });
+}, 60000); // каждую минуту
 
 // Запуск бота
 bot.launch().then(() => {

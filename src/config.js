@@ -6,8 +6,7 @@ module.exports = {
     SUPABASE_KEY: process.env.SUPABASE_KEY,
     RESPONSE_PROBABILITY: 10, // Вероятность автоматической генерации (10%)
     REACTION_PROBABILITY: 15, // Вероятность реакции (15%)
-    SWEAR_ENABLED: false, // Вместо SWEAR_CHANCE - просто вкл/выкл
-    SWEAR_MULTIPLIER: 3, // Оставляем множитель для случаев когда маты включены
+    SWEAR_ENABLED: false, // Просто вкл/выкл матов
     BOT_NAMES: [
         'Гусь', 'Гуся', 'гуся',
         'полумный', 'гусь', 'полумный гусь',

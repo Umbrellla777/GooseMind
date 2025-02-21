@@ -486,17 +486,24 @@ class MessageGenerator {
 
     async saveMessage(message) {
         try {
+            console.log('Сохраняем сообщение:', message.text);
+
             // Сохраняем информацию о чате
-            await this.supabase
+            const { error: chatError } = await this.supabase
                 .from('chats')
                 .upsert({
                     id: message.chat.id,
                     title: message.chat.title,
                     type: message.chat.type
                 });
+            
+            if (chatError) {
+                console.error('Ошибка сохранения чата:', chatError);
+                return;
+            }
 
             // Сохраняем информацию о пользователе
-            await this.supabase
+            const { error: userError } = await this.supabase
                 .from('users')
                 .upsert({
                     id: message.from.id,
@@ -505,8 +512,13 @@ class MessageGenerator {
                     last_name: message.from.last_name
                 });
 
+            if (userError) {
+                console.error('Ошибка сохранения пользователя:', userError);
+                return;
+            }
+
             // Сохраняем сообщение
-            const { data: savedMessage } = await this.supabase
+            const { data: savedMessage, error: messageError } = await this.supabase
                 .from('messages')
                 .insert({
                     message_id: message.message_id,
@@ -519,15 +531,17 @@ class MessageGenerator {
                 .select()
                 .single();
 
-            if (!savedMessage) {
-                throw new Error('Failed to save message');
+            if (messageError || !savedMessage) {
+                console.error('Ошибка сохранения сообщения:', messageError);
+                return;
             }
 
-            // Разбиваем на фразы и сохраняем
+            console.log('Сообщение сохранено, ID:', savedMessage.id);
+
+            // Разбиваем на фразы
             const words = this.tokenizer.tokenize(message.text.toLowerCase());
             const phrases = [];
             
-            // Собираем фразы по 2-3 слова
             for (let i = 0; i < words.length - 1; i++) {
                 phrases.push({
                     chat_id: message.chat.id,
@@ -546,13 +560,19 @@ class MessageGenerator {
 
             // Сохраняем фразы
             if (phrases.length > 0) {
-                await this.supabase
+                const { error: phrasesError } = await this.supabase
                     .from('phrases')
                     .insert(phrases);
+
+                if (phrasesError) {
+                    console.error('Ошибка сохранения фраз:', phrasesError);
+                    return;
+                }
+                console.log(`Сохранено ${phrases.length} фраз`);
             }
 
         } catch (error) {
-            console.error('Error saving message:', error);
+            console.error('Ошибка сохранения данных:', error);
         }
     }
 

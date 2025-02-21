@@ -263,22 +263,51 @@ class MessageGenerator {
     }
 
     async generateLocalResponse(message) {
-        // Обновляем контекст для данного чата
-        this.updateContext(message);
+        try {
+            // Обновляем контекст для данного чата
+            this.updateContext(message);
 
-        // Получаем последние сообщения из БД
-        const recentMessages = await this.getRecentMessages(message.chat.id);
-        
-        // Разбиваем сообщения на словосочетания
-        const phrases = this.extractPhrases(recentMessages);
-        
-        // Выбираем подходящие словосочетания
-        const selectedPhrases = this.selectRelevantPhrases(phrases, message.text);
-        
-        // Генерируем продолжение через Gemini
-        const response = await this.generateContinuation(selectedPhrases, message.text);
+            // Получаем фразы из БД
+            const { data: phrases } = await this.supabase
+                .from('phrases')
+                .select('phrase')
+                .eq('chat_id', message.chat.id)
+                .order('created_at', { ascending: false })
+                .limit(20);
 
-        return response;
+            if (!phrases || phrases.length === 0) {
+                console.log('Нет фраз в БД');
+                return 'Гусь молчит...';
+            }
+
+            // Анализируем входное сообщение через Gemini для понимания контекста
+            const analysis = await this.gemini.analyzeMessage(message.text);
+            
+            // Выбираем наиболее подходящие фразы
+            const relevantPhrases = phrases
+                .map(p => ({
+                    phrase: p.phrase,
+                    score: this.calculatePhraseRelevance(p.phrase.split(' '), analysis)
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3)  // Берем топ-3 фразы
+                .map(p => p.phrase);
+
+            console.log('Выбранные фразы:', relevantPhrases);
+
+            // Используем Gemini только для связки фраз
+            const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
+            const response = await this.gemini.generateContinuation(
+                relevantPhrases.join(' '), 
+                message.text,
+                useSwears
+            );
+
+            return response;
+        } catch (error) {
+            console.error('Error in generateLocalResponse:', error);
+            return 'Гусь молчит...';
+        }
     }
 
     updateContext(message) {
@@ -480,28 +509,38 @@ class MessageGenerator {
                     timestamp: new Date(message.date * 1000)
                 });
 
-            // Разбиваем на словосочетания и сохраняем
-            const words = this.tokenizer.tokenize(message.text.toLowerCase());
+            // Разбиваем на словосочетания
+            const words = message.text.toLowerCase().split(/\s+/);
             const phrases = [];
             
-            // Собираем фразы по 2-3 слова
+            // Собираем фразы по 2-3 слова с сохранением порядка
             for (let i = 0; i < words.length - 1; i++) {
-                phrases.push([words[i], words[i + 1]].join(' '));
+                // Двухсловные фразы
+                phrases.push({
+                    chat_id: message.chat.id,
+                    phrase: `${words[i]} ${words[i + 1]}`,
+                    order: i
+                });
+                
+                // Трехсловные фразы
                 if (i < words.length - 2) {
-                    phrases.push([words[i], words[i + 1], words[i + 2]].join(' '));
+                    phrases.push({
+                        chat_id: message.chat.id,
+                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`,
+                        order: i
+                    });
                 }
             }
-            
+
             // Сохраняем фразы в БД
             if (phrases.length > 0) {
-                await this.supabase
+                const { error } = await this.supabase
                     .from('phrases')
-                    .insert(
-                        phrases.map(phrase => ({
-                            chat_id: message.chat.id,
-                            phrase: phrase
-                        }))
-                    );
+                    .insert(phrases);
+                
+                if (error) {
+                    console.error('Error saving phrases:', error);
+                }
             }
 
         } catch (error) {

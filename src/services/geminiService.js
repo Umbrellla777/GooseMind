@@ -73,6 +73,91 @@ class GeminiService {
             return text;
         }
     }
+
+    async generateContinuation(basePhrase, context, lastMessage, swearProbability) {
+        try {
+            // Проверяем вероятность матов в процентах
+            const useSwears = Math.random() * 100 < swearProbability;
+            
+            // Получаем маты из базовой фразы и контекста
+            const swearWords = this.extractSwearWords(basePhrase + ' ' + context);
+            
+            // Разбиваем базовую фразу на отдельные фразы и выбираем от 1 до 3 случайных
+            const phrases = basePhrase.split(/[.!?]+/).filter(p => p.trim().length > 0);
+            const selectedCount = Math.floor(Math.random() * 3) + 1; // от 1 до 3
+            const selectedPhrases = [];
+            
+            // Выбираем случайные уникальные фразы
+            while (selectedPhrases.length < selectedCount && phrases.length > 0) {
+                const index = Math.floor(Math.random() * phrases.length);
+                selectedPhrases.push(phrases[index].trim());
+                phrases.splice(index, 1);
+            }
+
+            const prompt = `Контекст: Ты - полуумный гусь, который отвечает на сообщения в чате.
+                           
+                           Последние 10 сообщений в чате:
+                           "${context}"
+                           
+                           Последнее сообщение:
+                           "${lastMessage}"
+                           
+                           У меня есть ${selectedPhrases.length} случайных фраз из базы:
+                           ${selectedPhrases.map((p, i) => `${i + 1}) "${p}"`).join('\n')}
+                           
+                           ${useSwears && swearWords.length > 0 ? 
+                             `Доступные маты: ${swearWords.join(', ')}` : ''}
+                           
+                           Задача:
+                           1. Составь ОДНО связное предложение, используя ВСЕ предоставленные фразы
+                           2. Фразы можно объединять, изменять их форму и порядок слов
+                           3. Ответ должен быть связан с последним сообщением
+                           4. Учитывай контекст предыдущих сообщений
+                           5. ${useSwears && swearWords.length > 0 ? 
+                              'ОБЯЗАТЕЛЬНО используй один из предоставленных матов' : 
+                              'НЕ используй маты'}
+                           6. Сохраняй разговорный стиль и юмор
+                           7. Ответ должен быть НЕ ДЛИННЕЕ 25 слов
+                           8. Все фразы ДОЛЖНЫ быть использованы в ответе
+                           
+                           Отвечай ТОЛЬКО готовым предложением.`;
+
+            const result = await this.model.generateContent({
+                contents: [{ parts: [{ text: prompt }] }]
+            });
+
+            let response = result.response.text().trim();
+            
+            // Проверяем длину ответа
+            const words = response.split(/\s+/);
+            if (words.length > 25) {
+                response = words.slice(0, 25).join(' ') + '...';
+            }
+
+            return response;
+        } catch (error) {
+            console.error('Gemini continuation error:', error);
+            return "Гусь молчит...";
+        }
+    }
+
+    // Добавим метод для извлечения матов из текста
+    extractSwearWords(text) {
+        // Список матных корней
+        const swearRoots = ['хуй', 'пизд', 'ебл', 'бля', 'сук', 'хер', 'пох', 'бл', 'пидр'];
+        
+        // Разбиваем текст на слова и ищем маты
+        const words = text.toLowerCase().split(/\s+/);
+        const swears = new Set();
+        
+        words.forEach(word => {
+            if (swearRoots.some(root => word.includes(root))) {
+                swears.add(word);
+            }
+        });
+        
+        return Array.from(swears);
+    }
 }
 
 module.exports = { GeminiService }; 

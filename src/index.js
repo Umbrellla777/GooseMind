@@ -1,10 +1,20 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
 
-const bot = new Telegraf(config.BOT_TOKEN);
+// Настройки для бота
+const botOptions = {
+    telegram: {
+        apiRoot: 'https://api.telegram.org',
+        apiTimeout: 30000, // уменьшим таймаут до 30 секунд
+        webhookReply: false
+    },
+    handlerTimeout: 30000 // уменьшим общий таймаут
+};
+
+const bot = new Telegraf(config.BOT_TOKEN, botOptions);
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
@@ -13,7 +23,87 @@ const messageGenerator = new MessageGenerator(supabase);
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
-let awaitingSwearMultiplier = false;
+let awaitingSwearProbability = false;
+
+// Добавим обработку разрыва соединения
+let isConnected = true;
+const reconnectInterval = 5000; // 5 секунд между попытками
+
+async function reconnect() {
+    try {
+        if (!isConnected) {
+            console.log('Попытка переподключения к Telegram...');
+            await bot.telegram.getMe();
+            isConnected = true;
+            console.log('Успешно переподключились к Telegram');
+        }
+    } catch (error) {
+        isConnected = false;
+        console.error('Ошибка при переподключении:', error.message);
+        setTimeout(reconnect, reconnectInterval);
+    }
+}
+
+// Добавляем функцию handleCallback перед регистрацией обработчиков
+async function handleCallback(ctx, action) {
+    try {
+        // Проверяем доступ
+        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
+            await ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+            return;
+        }
+
+        switch (action) {
+            case 'set_probability':
+                awaitingProbability = true;
+                await ctx.answerCbQuery('Введите новую вероятность');
+                await ctx.reply(
+                    '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
+                    'Например: 10 - ответ на 10% сообщений\n' +
+                    'Текущее значение: ' + config.RESPONSE_PROBABILITY + '%'
+                );
+                break;
+
+            case 'set_reaction_probability':
+                awaitingReactionProbability = true;
+                await ctx.answerCbQuery('Введите новую вероятность реакций');
+                await ctx.reply(
+                    '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
+                    'Например: 15 - реакция на 15% сообщений\n' +
+                    'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
+                );
+                break;
+
+            case 'toggle_swears':
+                awaitingSwearProbability = true;
+                await ctx.answerCbQuery('Введите вероятность матов');
+                await ctx.reply(
+                    '🤬 Введите вероятность использования матов (от 0 до 100%).\n' +
+                    'Например: 50 - маты будут в 50% ответов\n' +
+                    '0 - маты отключены\n' +
+                    'Текущее значение: ' + config.SWEAR_PROBABILITY + '%'
+                );
+                break;
+
+            case 'clear_db':
+                await ctx.answerCbQuery('Очистка базы данных...');
+                await messageHandler.clearDatabase();
+                await ctx.reply('✅ База данных успешно очищена!');
+                break;
+
+            default:
+                await ctx.answerCbQuery('Неизвестное действие');
+        }
+    } catch (error) {
+        console.error('Ошибка обработки callback:', error);
+        try {
+            await ctx.answerCbQuery('Произошла ошибка').catch(() => {});
+            await ctx.reply('Произошла ошибка: ' + error.message).catch(() => {});
+        } catch (e) {
+            console.error('Ошибка отправки уведомления об ошибке:', e);
+        }
+    }
+}
 
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
@@ -34,8 +124,10 @@ bot.on('text', async (ctx) => {
                 inline_keyboard: [
                     [
                         { text: '⚡️ Частота ответа', callback_data: 'set_probability' },
-                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' },
-                        { text: '🤬 Частота матов', callback_data: 'set_swear_multiplier' }
+                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
+                    ],
+                    [
+                        { text: '🤬 Частота матов', callback_data: 'toggle_swears' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -45,9 +137,9 @@ bot.on('text', async (ctx) => {
 
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
-                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}\n` +
-                `Множитель матов: ${config.SWEAR_MULTIPLIER}`,
+                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+                `Вероятность матов: ${config.SWEAR_PROBABILITY}%`,
                 { reply_markup: keyboard }
             );
             return;
@@ -55,99 +147,108 @@ bot.on('text', async (ctx) => {
 
         // Проверяем, ожидаем ли ввод вероятности ответов
         if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseFloat(ctx.message.text);
-            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
+            const prob = parseInt(ctx.message.text);
+            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
                 config.RESPONSE_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}`);
+                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
                 awaitingProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
+                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
                 return;
             }
         }
 
         // Добавляем проверку для вероятности реакций
         if (awaitingReactionProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseFloat(ctx.message.text);
-            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
+            const prob = parseInt(ctx.message.text);
+            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
                 config.REACTION_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}`);
+                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
                 awaitingReactionProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
+                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                return;
+            }
+        }
+
+        // Проверяем ввод вероятности матов
+        if (awaitingSwearProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
+            const prob = parseInt(ctx.message.text);
+            if (!isNaN(prob) && prob >= 0 && prob <= 100) {
+                config.SWEAR_PROBABILITY = prob;
+                await ctx.reply(`✅ Вероятность матов установлена на ${prob}%`);
+                awaitingSwearProbability = false;
+                return;
+            } else {
+                await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
                 return;
             }
         }
 
         // Сохраняем сообщение
-        await messageHandler.saveMessage(ctx.message);
-        
-        // Проверяем упоминание бота
-        if (messageHandler.isBotMentioned(ctx.message.text)) {
-            const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
-            return;
+        try {
+            const result = await messageGenerator.saveMessage(ctx.message);
+            if (!result) {
+                console.log('Пробуем прямое сохранение...');
+                await messageGenerator.saveMessageDirect(ctx.message);
+            }
+        } catch (saveError) {
+            console.error('Ошибка при сохранении сообщения:', saveError);
         }
         
-        // Проверяем ответ на сообщение бота
-        if (ctx.message.reply_to_message?.from?.id === ctx.botInfo.id) {
-            const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
-            return;
-        }
+        // Проверяем, является ли сообщение ответом на сообщение бота
+        const isReplyToBot = ctx.message.reply_to_message?.from?.id === ctx.botInfo.id;
         
-        // Случайная генерация сообщений и реакций
-        if (Math.random() < config.RESPONSE_PROBABILITY) {
+        // Проверяем вероятность ответа или упоминание бота
+        const shouldRespond = isReplyToBot || 
+                            messageHandler.isBotMentioned(ctx.message.text) || 
+                            Math.random() * 100 < config.RESPONSE_PROBABILITY;
+
+        console.log(`Проверка ответа:`, {
+            isReplyToBot,
+            isMentioned: messageHandler.isBotMentioned(ctx.message.text),
+            probability: config.RESPONSE_PROBABILITY,
+            shouldRespond
+        });
+
+        if (shouldRespond) {
+            console.log('Генерируем ответ...');
             const response = await messageGenerator.generateResponse(ctx.message);
-            await ctx.reply(response);
+            if (response && response !== "Гусь молчит...") {
+                await ctx.reply(response);
+            } else {
+                console.log('Пустой ответ от генератора');
+            }
+        } else {
+            console.log('Пропускаем сообщение по вероятности');
         }
 
         // Анализируем сообщение для реакции
-        const reactions = await messageHandler.analyzeForReaction(ctx.message);
-        if (reactions) {
-            try {
-                await ctx.telegram.callApi('setMessageReaction', {
-                    chat_id: ctx.message.chat.id,
-                    message_id: ctx.message.message_id,
-                    reaction: reactions.map(emoji => ({
-                        type: 'emoji',
-                        emoji: emoji
-                    })),
-                    is_big: Math.random() < 0.1 // 10% шанс на большую реакцию
-                });
-            } catch (error) {
-                // Игнорируем ошибки реакций
-            }
-        }
-
-        // Добавляем обработку ввода множителя в обработчик сообщений
-        if (awaitingSwearMultiplier && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const multiplier = parseInt(ctx.message.text);
-            if (!isNaN(multiplier) && multiplier >= 0 && multiplier <= 10) {
-                config.SWEAR_MULTIPLIER = multiplier;
-                const message = multiplier === 0 
-                    ? '✅ Маты отключены' 
-                    : `✅ Множитель матов установлен на ${multiplier}`;
-                await ctx.reply(message);
-                awaitingSwearMultiplier = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 10');
-                return;
+        if (Math.random() < config.REACTION_PROBABILITY / 100) {
+            const shouldReact = Math.random() < 0.15; // Дополнительная проверка
+            if (shouldReact) {
+                const reactions = await messageHandler.analyzeForReaction(ctx.message);
+                if (reactions && reactions.length > 0) {
+                    try {
+                        await ctx.telegram.callApi('setMessageReaction', {
+                            chat_id: ctx.message.chat.id,
+                            message_id: ctx.message.message_id,
+                            reaction: reactions.slice(0, 1).map(emoji => ({ // Берем только 1 реакцию
+                                type: 'emoji',
+                                emoji: emoji
+                            })),
+                            is_big: Math.random() < 0.1
+                        });
+                    } catch (error) {
+                        console.error('Reaction error:', error);
+                    }
+                }
             }
         }
 
     } catch (error) {
-        // Проверяем ошибку на миграцию чата
-        if (error.response?.parameters?.migrate_to_chat_id) {
-            const newChatId = error.response.parameters.migrate_to_chat_id;
-            console.log(`Retrying with new chat ID: ${newChatId}`);
-            // Обновляем ID чата и пробуем снова
-            ctx.chat.id = newChatId;
-            return ctx.reply(error.on.payload.text);
-        }
         console.error('Error processing message:', error);
         if (ctx.message.from.username === 'Umbrellla777') {
             await ctx.reply('Произошла ошибка при обработке сообщения: ' + error.message);
@@ -155,98 +256,62 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// Обработчики кнопок
-bot.action('set_probability', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        awaitingProbability = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '📊 Введите новую вероятность ответа (от 0.01 до 1).\n' +
-            'Например: 0.1 - ответ на 10% сообщений\n' +
-            'Текущее значение: ' + config.RESPONSE_PROBABILITY
-        );
-    } catch (error) {
-        console.error('Ошибка при установке вероятности:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
+// Обработчик кнопок с быстрым ответом
+bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
+bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
+bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
+bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
-bot.action('clear_db', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        await messageHandler.clearDatabase();
-        await ctx.answerCbQuery('База данных очищена');
-        await ctx.reply('✅ База данных успешно очищена!');
-    } catch (error) {
-        console.error('Ошибка при очистке базы данных:', error);
-        await ctx.answerCbQuery('Ошибка при очистке базы данных');
-    }
-});
-
-// Добавляем обработчик для установки вероятности реакций
-bot.action('set_reaction_probability', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        awaitingReactionProbability = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '😎 Введите новую вероятность реакций (от 0.01 до 1).\n' +
-            'Например: 0.15 - реакция на 15% сообщений\n' +
-            'Текущее значение: ' + config.REACTION_PROBABILITY
-        );
-    } catch (error) {
-        console.error('Ошибка при установке вероятности реакций:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
-
-// Добавляем обработчик для установки множителя матов
-bot.action('set_swear_multiplier', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        awaitingSwearMultiplier = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '🤬 Введите новый множитель для матов (от 0 до 10).\n' +
-            'Например: 3 - маты будут встречаться в 3 раза чаще\n' +
-            '0 - маты отключены\n' +
-            'Текущее значение: ' + config.SWEAR_MULTIPLIER
-        );
-    } catch (error) {
-        console.error('Ошибка при установке множителя матов:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
-
-// Обработка ошибок
+// И добавим обработку ошибок
 bot.catch((err, ctx) => {
-    console.error('Ошибка Telegraf:', err);
-    if (ctx.from?.username === 'Umbrellla777') {
-        ctx.reply('Произошла ошибка в работе бота: ' + err.message);
+    console.error('Ошибка Telegraf:', err.message);
+    
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.code === 'ETELEGRAM') {
+        isConnected = false;
+        reconnect();
+    }
+    
+    if (ctx?.from?.username === 'Umbrellla777') {
+        ctx.reply('Произошла ошибка в работе бота: ' + err.message)
+            .catch(e => console.error('Ошибка отправки сообщения об ошибке:', e.message));
     }
 });
 
-// Запуск бота
-bot.launch().then(() => {
-    console.log('Бот запущен');
-    console.log('Текущая вероятность ответа:', config.RESPONSE_PROBABILITY);
-}).catch((error) => {
-    console.error('Ошибка при запуске бота:', error);
-});
+// Запуск бота с обработкой ошибок
+async function startBot() {
+    try {
+        // Сначала попробуем остановить предыдущую сессию
+        try {
+            await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        } catch (e) {
+            console.log('Ошибка при удалении вебхука:', e.message);
+        }
+
+        // Запускаем бота
+        await bot.launch({
+            dropPendingUpdates: true // Игнорируем обновления, накопившиеся за время простоя
+        });
+
+        console.log('Бот запущен');
+        isConnected = true;
+    } catch (error) {
+        console.error('Ошибка при запуске бота:', error.message);
+        isConnected = false;
+        // Увеличим интервал между попытками
+        setTimeout(startBot, reconnectInterval * 2);
+    }
+}
 
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM')); 
+process.once('SIGINT', () => {
+    console.log('SIGINT received, shutting down...');
+    bot.stop('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down...');
+    bot.stop('SIGTERM');
+});
+
+// Запускаем бота
+startBot();

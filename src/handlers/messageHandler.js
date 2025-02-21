@@ -1,45 +1,28 @@
 const config = require('../config');
+const { MessageGenerator } = require('../services/messageGenerator');
 
 // Константы для реакций
 const REACTIONS = {
     POSITIVE: ['👍', '❤️', '🔥', '🥰', '👏'],
-    NEGATIVE: ['👎', '💩'],
+    NEGATIVE: ['👎', '💩', '🤮'],
     FUNNY: ['🤣', '😂'],
     THINKING: ['🤔'],
-    SURPRISED: ['😱'],
-    RANDOM: ['🦆', '❤️‍🔥', '🤨', '🖕']
+    SURPRISED: ['😱', '🤯'],
+    RANDOM: ['🦆', '❤️‍🔥', '🤨', '🖕', '💩']
 };
 
 class MessageHandler {
     constructor(supabase) {
         this.supabase = supabase;
+        this.messageGenerator = new MessageGenerator(supabase);
     }
 
     async saveMessage(message) {
-        const words = this.parseMessage(message.text);
-        
-        // Сохраняем сообщение
-        await this.supabase
-            .from('messages')
-            .insert({
-                message_id: message.message_id,
-                chat_id: message.chat.id,
-                user_id: message.from.id,
-                text: message.text,
-                timestamp: new Date(message.date * 1000),
-                words: words
-            });
-            
-        // Сохраняем слова и их контекст
-        for (const word of words) {
-            await this.supabase
-                .from('words')
-                .insert({
-                    word: word.toLowerCase(),
-                    message_id: message.message_id,
-                    context: words.join(' ')
-                });
-        }
+        return await this.messageGenerator.saveMessage(message);
+    }
+
+    async saveMessageDirect(message) {
+        return await this.messageGenerator.saveMessageDirect(message);
     }
 
     parseMessage(text) {
@@ -73,6 +56,11 @@ class MessageHandler {
                 return null;
             }
 
+            // Сразу проверяем вероятность реакции
+            if (Math.random() * 100 >= config.REACTION_PROBABILITY) {
+                return null;
+            }
+
             // Анализируем текст сообщения
             const text = message.text.toLowerCase();
             const words = this.parseMessage(text);
@@ -80,7 +68,7 @@ class MessageHandler {
             // Выбираем тип реакции на основе анализа
             let reactionType = this.selectReactionType(text, words);
 
-            // Используем базовую вероятность для всех сообщений
+            // Возвращаем реакцию
             return this.getRandomReaction(reactionType);
         } catch (error) {
             console.error('Error analyzing for reaction:', error);
@@ -92,36 +80,32 @@ class MessageHandler {
         // Позитивные слова
         const positiveWords = ['круто', 'класс', 'супер', 'отлично', 'хорошо', 'да', 'согласен'];
         // Негативные слова
-        const negativeWords = ['плохо', 'ужас', 'отстой', 'нет', 'не согласен'];
+        const negativeWords = ['плохо', 'ужас', 'отстой', 'нет', 'не согласен', 'говно', 'дерьмо', 'хрень'];
         // Смешные слова
         const funnyWords = ['ахах', 'хах', 'лол', 'кек', 'смешно', 'ржака'];
         // Думающие слова
         const thinkingWords = ['думаю', 'полагаю', 'кажется', 'возможно', 'наверное'];
 
         // Проверяем наличие слов в тексте
+        if (words.some(word => negativeWords.includes(word))) return 'NEGATIVE';
         if (words.some(word => funnyWords.includes(word))) return 'FUNNY';
         if (words.some(word => positiveWords.includes(word))) return 'POSITIVE';
-        if (words.some(word => negativeWords.includes(word))) return 'NEGATIVE';
         if (words.some(word => thinkingWords.includes(word))) return 'THINKING';
         
-        // Если не нашли специальных слов, возвращаем случайный тип
-        const types = ['POSITIVE', 'RANDOM']; // Чаще используем позитивные реакции
+        // Если не нашли специальных слов, возвращаем случайный тип с большим шансом на RANDOM
+        const types = ['POSITIVE', 'NEGATIVE', 'RANDOM', 'RANDOM', 'RANDOM']; // Увеличили шанс случайных реакций
         return types[Math.floor(Math.random() * types.length)];
     }
 
     getRandomReaction(type) {
-        // Используем настраиваемую вероятность напрямую
-        if (Math.random() > config.REACTION_PROBABILITY) return null;
-
         const reactions = REACTIONS[type];
         if (!reactions) return null;
 
-        // Иногда добавляем случайную реакцию из RANDOM
-        if (Math.random() < 0.2) { // 20% шанс добавить случайную реакцию
-            return [
-                reactions[Math.floor(Math.random() * reactions.length)],
-                REACTIONS.RANDOM[Math.floor(Math.random() * REACTIONS.RANDOM.length)]
-            ];
+        // Увеличим шанс на дополнительную реакцию
+        if (Math.random() < 0.3) { // 30% шанс добавить случайную реакцию
+            const mainReaction = reactions[Math.floor(Math.random() * reactions.length)];
+            const extraReaction = Math.random() < 0.5 ? '💩' : REACTIONS.RANDOM[Math.floor(Math.random() * REACTIONS.RANDOM.length)];
+            return [mainReaction, extraReaction];
         }
 
         return [reactions[Math.floor(Math.random() * reactions.length)]];

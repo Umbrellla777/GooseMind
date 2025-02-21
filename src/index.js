@@ -282,7 +282,14 @@ bot.catch((err, ctx) => {
 });
 
 // Запуск бота
+let isRunning = false;
+
 bot.launch().then(() => {
+    if (isRunning) {
+        console.log('Бот уже запущен');
+        return;
+    }
+    isRunning = true;
     console.log('Бот запущен');
     console.log('Текущая вероятность ответа:', config.RESPONSE_PROBABILITY);
 }).catch((error) => {
@@ -290,5 +297,9 @@ bot.launch().then(() => {
 });
 
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGINT', () => {
+    isRunning = false;
+    bot.stop('SIGINT');
+});
+
 process.once('SIGTERM', () => bot.stop('SIGTERM')); 

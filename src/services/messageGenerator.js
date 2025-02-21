@@ -533,6 +533,43 @@ class MessageGenerator {
                 return;
             }
 
+            // Функция для проверки валидности фразы
+            const isValidPhrase = (phrase) => {
+                // Слишком короткие или длинные
+                if (phrase.length <= 2 || phrase.length > 100) return false;
+
+                // Технические паттерны
+                if (phrase.match(/\[\d{2}\.\d{2}\.\d{4}/) ||  // Даты
+                    phrase.match(/\d{2}:\d{2}/) ||            // Время
+                    phrase.includes('[') ||                    // Скобки
+                    phrase.includes(']')) {
+                    return false;
+                }
+
+                // Служебные слова
+                const serviceWords = new Set([
+                    'а', 'и', 'но', 'да', 'вот', 'как', 'что', 'ну', 'то', 'же', 'бы', 'ли'
+                ]);
+
+                // Проверяем, не состоит ли фраза только из служебных слов
+                const words = phrase.toLowerCase().split(/\s+/);
+                if (words.length === 1) return false; // Одиночные слова
+                if (words.every(word => serviceWords.has(word))) return false;
+
+                // Проверяем начало фразы на служебные слова
+                if (words.length < 3 && serviceWords.has(words[0])) return false;
+
+                // Проверяем знаки препинания
+                if (phrase.endsWith(',') || 
+                    phrase.startsWith('-') || 
+                    phrase.includes('–') || 
+                    phrase.includes('—')) {
+                    return false;
+                }
+
+                return true;
+            };
+
             console.log('Начало сохранения сообщения:', {
                 message_id: message.message_id,
                 chat_id: message.chat.id,
@@ -576,26 +613,35 @@ class MessageGenerator {
                 return null;
             }
 
-            // Разбиваем на фразы
+            // Разбиваем на фразы с фильтрацией
             const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
             const phrases = [];
 
             for (let i = 0; i < words.length - 1; i++) {
-                phrases.push({
-                    chat_id: message.chat.id,
-                    message_id: savedMessage.id,
-                    phrase: `${words[i]} ${words[i + 1]}`
-                });
-
-                if (i < words.length - 2) {
+                // Фраза из 2 слов
+                const phrase2 = `${words[i]} ${words[i + 1]}`;
+                if (isValidPhrase(phrase2)) {
                     phrases.push({
                         chat_id: message.chat.id,
                         message_id: savedMessage.id,
-                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`
+                        phrase: phrase2
                     });
+                }
+
+                // Фраза из 3 слов
+                if (i < words.length - 2) {
+                    const phrase3 = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+                    if (isValidPhrase(phrase3)) {
+                        phrases.push({
+                            chat_id: message.chat.id,
+                            message_id: savedMessage.id,
+                            phrase: phrase3
+                        });
+                    }
                 }
             }
 
+            // Сохраняем только валидные фразы
             if (phrases.length > 0) {
                 const { error: phrasesError } = await this.supabase
                     .from('phrases')
@@ -604,7 +650,7 @@ class MessageGenerator {
                 if (phrasesError) {
                     console.error('Ошибка сохранения фраз:', phrasesError);
                 } else {
-                    console.log(`Сохранено ${phrases.length} фраз`);
+                    console.log(`Сохранено ${phrases.length} валидных фраз`);
                 }
             }
 

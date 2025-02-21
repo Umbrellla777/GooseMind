@@ -74,12 +74,14 @@ class GeminiService {
         }
     }
 
-    async generateContinuation(basePhrase, context, lastMessage, swearProbability) {
+    async generateContinuation(basePhrase, context, lastMessage, swearProbability, swearPhrases = []) {
         try {
             const useSwears = Math.random() * 100 < swearProbability;
             
-            // Получаем маты из базовой фразы и контекста
-            const swearWords = this.extractSwearWords(basePhrase + ' ' + context);
+            // Получаем маты из базовой фразы, контекста и списка матных фраз
+            const swearWords = this.extractSwearWords(
+                basePhrase + ' ' + context + ' ' + swearPhrases.join(' ')
+            );
             
             // Разбиваем базовую фразу на отдельные фразы и выбираем от 1 до 3 случайных
             const phrases = basePhrase.split(/[.!?]+/).filter(p => {
@@ -106,7 +108,8 @@ class GeminiService {
                            ${selectedPhrases.map((p, i) => `${i + 1}) "${p}"`).join('\n')}
                            
                            ${useSwears && swearWords.length > 0 ? 
-                             `Доступные маты: ${swearWords.join(', ')}` : ''}
+                             `Доступные маты (ОБЯЗАТЕЛЬНО использовать один): ${swearWords.join(', ')}` : 
+                             'НЕ используй маты'}
                            
                            Задача:
                            1. Составь ОДНО связное предложение, используя ВСЕ предоставленные фразы

@@ -297,21 +297,45 @@ class MessageGenerator {
                 return "Гусь молчит...";
             }
 
+            // Получаем все фразы с матами для возможного использования
+            let swearPhrases = [];
+            if (config.SWEAR_PROBABILITY > 0) {
+                const { data: swears } = await this.supabase
+                    .from('phrases')
+                    .select('phrase')
+                    .or(
+                        'phrase.ilike.%хуй%,phrase.ilike.%пизд%,phrase.ilike.%ебл%,' +
+                        'phrase.ilike.%бля%,phrase.ilike.%сук%,phrase.ilike.%хер%,' +
+                        'phrase.ilike.%пох%,phrase.ilike.%пидр%'
+                    );
+                
+                if (swears && swears.length > 0) {
+                    swearPhrases = swears.map(s => s.phrase);
+                    console.log(`Найдено ${swearPhrases.length} фраз с матами`);
+                }
+            }
+
             // Выбираем случайное количество фраз (1-3)
             const phraseCount = Math.floor(Math.random() * 3) + 1;
             const selectedPhrases = [];
 
-            // Выбираем случайные уникальные фразы
+            // Если включены маты и есть матные фразы, с вероятностью добавляем одну
+            if (config.SWEAR_PROBABILITY > 0 && swearPhrases.length > 0 && 
+                Math.random() * 100 < config.SWEAR_PROBABILITY) {
+                const swearPhrase = swearPhrases[Math.floor(Math.random() * swearPhrases.length)];
+                selectedPhrases.push(swearPhrase);
+                console.log('Добавлена фраза с матом:', swearPhrase);
+            }
+
+            // Добавляем остальные случайные фразы
             while (selectedPhrases.length < phraseCount && allPhrases.length > 0) {
                 const index = Math.floor(Math.random() * allPhrases.length);
                 const phrase = allPhrases[index].phrase;
                 
-                // Проверяем, что фраза не является частью последнего сообщения
                 if (!message.text.toLowerCase().includes(phrase.toLowerCase())) {
                     selectedPhrases.push(phrase);
                 }
                 
-                // Удаляем использованную фразу
                 allPhrases.splice(index, 1);
             }
 
@@ -337,7 +361,8 @@ class MessageGenerator {
                 basePhrase,
                 context,
                 message.text,
-                config.SWEAR_PROBABILITY
+                config.SWEAR_PROBABILITY,
+                swearPhrases // передаем список фраз с матами
             );
 
             console.log('Ответ от Gemini:', response);

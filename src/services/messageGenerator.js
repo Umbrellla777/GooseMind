@@ -137,6 +137,11 @@ class MessageGenerator {
             'мемы', 'смайлики', 'программист', 'чайник'
         ];
         
+        // Повышаем релевантность матов для более частого их использования
+        if (this.isSwearWord(word)) {
+            relevance += 5; // Высокий приоритет для матов
+        }
+        
         // Добавляем случайные забавные слова
         const randomFunnyWords = funnyWords
             .sort(() => Math.random() - 0.5)
@@ -171,6 +176,13 @@ class MessageGenerator {
         }
         
         return relevance;
+    }
+
+    isSwearWord(word) {
+        // Примерный список матных корней (можно расширить)
+        const swearRoots = ['хуй', 'пизд', 'ебл', 'бля', 'сук', 'хер', 'пох', 'бл'];
+        const loweredWord = word.toLowerCase();
+        return swearRoots.some(root => loweredWord.includes(root));
     }
 
     generateSentence(wordMap, context) {
@@ -286,9 +298,15 @@ class MessageGenerator {
         // Анализируем входящее сообщение
         const keywords = await this.gemini.analyzeMessage(message.text);
         
+        // Получаем релевантные сообщения из БД
+        const relevantMessages = await this.getRelevantMessagesFromDB(keywords);
+        
+        // Анализируем контекст и релевантные сообщения
+        const contextWords = await this.analyzeContextAndMessages(message.text, relevantMessages);
+        
         // Добавляем ключевые слова в релевантность
         const wordMap = await this.getWordsFromDatabase(message.chat.id, 
-            message.text + ' ' + keywords.join(' ')
+            message.text + ' ' + keywords.join(' ') + ' ' + contextWords.join(' ')
         );
 
         // Если база пуста - используем заготовленные ответы
@@ -380,6 +398,52 @@ class MessageGenerator {
         
         const template = templates[Math.floor(Math.random() * templates.length)];
         return [...template, this.selectRandomWord(Array.from(this.wordsCache.keys()))];
+    }
+
+    async getRelevantMessagesFromDB(keywords) {
+        try {
+            // Ищем сообщения, содержащие похожие ключевые слова
+            const { data: messages } = await this.supabase
+                .from('messages')
+                .select('text')
+                .textSearch('text', keywords.join(' '))
+                .limit(5);
+            
+            return messages || [];
+        } catch (error) {
+            console.error('Error getting relevant messages:', error);
+            return [];
+        }
+    }
+
+    async analyzeContextAndMessages(inputText, relevantMessages) {
+        try {
+            // Собираем все слова из релевантных сообщений
+            const allWords = relevantMessages
+                .map(msg => this.tokenizer.tokenize(msg.text.toLowerCase()))
+                .flat();
+            
+            // Находим часто встречающиеся слова
+            const wordFrequency = new Map();
+            allWords.forEach(word => {
+                wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
+                // Если находим мат, добавляем его с повышенной частотой
+                if (this.isSwearWord(word)) {
+                    wordFrequency.set(word, (wordFrequency.get(word) || 0) + 3);
+                }
+            });
+            
+            // Выбираем топ-5 наиболее частых слов
+            const topWords = Array.from(wordFrequency.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([word]) => word);
+            
+            return topWords;
+        } catch (error) {
+            console.error('Error analyzing context:', error);
+            return [];
+        }
     }
 }
 

@@ -49,8 +49,8 @@ bot.on('text', async (ctx) => {
 
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
-                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}\n` +
                 `Множитель матов: ${config.SWEAR_MULTIPLIER}\n` +
                 `Шанс матов: ${(config.SWEAR_CHANCE * 100).toFixed(0)}%`,
                 { reply_markup: keyboard }
@@ -60,28 +60,28 @@ bot.on('text', async (ctx) => {
 
         // Проверяем, ожидаем ли ввод вероятности ответов
         if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+            const prob = parseFloat(ctx.message.text);
+            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
                 config.RESPONSE_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
+                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}`);
                 awaitingProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
                 return;
             }
         }
 
         // Добавляем проверку для вероятности реакций
         if (awaitingReactionProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+            const prob = parseFloat(ctx.message.text);
+            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
                 config.REACTION_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
+                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}`);
                 awaitingReactionProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
                 return;
             }
         }
@@ -104,7 +104,7 @@ bot.on('text', async (ctx) => {
         }
         
         // Случайная генерация сообщений и реакций
-        if (Math.random() < config.RESPONSE_PROBABILITY / 100) {
+        if (Math.random() < config.RESPONSE_PROBABILITY) {
             const response = await messageGenerator.generateResponse(ctx.message);
             await ctx.reply(response);
         }
@@ -186,9 +186,9 @@ bot.action('set_probability', async (ctx) => {
         awaitingProbability = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
-            'Например: 10 - ответ на 10% сообщений\n' +
-            'Текущее значение: ' + config.RESPONSE_PROBABILITY + '%'
+            '📊 Введите новую вероятность ответа (от 0.01 до 1).\n' +
+            'Например: 0.1 - ответ на 10% сообщений\n' +
+            'Текущее значение: ' + config.RESPONSE_PROBABILITY
         );
     } catch (error) {
         console.error('Ошибка при установке вероятности:', error);
@@ -221,9 +221,9 @@ bot.action('set_reaction_probability', async (ctx) => {
         awaitingReactionProbability = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
-            'Например: 15 - реакция на 15% сообщений\n' +
-            'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
+            '😎 Введите новую вероятность реакций (от 0.01 до 1).\n' +
+            'Например: 0.15 - реакция на 15% сообщений\n' +
+            'Текущее значение: ' + config.REACTION_PROBABILITY
         );
     } catch (error) {
         console.error('Ошибка при установке вероятности реакций:', error);

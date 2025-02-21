@@ -2,6 +2,7 @@ const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();
 const PorterStemmerRu = natural.PorterStemmerRu;
 const { GeminiService } = require('./geminiService');
+const config = require('../config');
 
 class MessageGenerator {
     constructor(supabase) {
@@ -139,7 +140,7 @@ class MessageGenerator {
         
         // Повышаем релевантность матов для более частого их использования
         if (this.isSwearWord(word)) {
-            relevance += 5; // Высокий приоритет для матов
+            relevance += 2 * config.SWEAR_MULTIPLIER; // Используем настраиваемый множитель
         }
         
         // Добавляем случайные забавные слова
@@ -429,7 +430,7 @@ class MessageGenerator {
                 wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
                 // Если находим мат, добавляем его с повышенной частотой
                 if (this.isSwearWord(word)) {
-                    wordFrequency.set(word, (wordFrequency.get(word) || 0) + 3);
+                    wordFrequency.set(word, (wordFrequency.get(word) || 0) + config.SWEAR_MULTIPLIER);
                 }
             });
             

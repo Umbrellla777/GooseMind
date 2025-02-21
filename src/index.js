@@ -13,6 +13,7 @@ const messageGenerator = new MessageGenerator(supabase);
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
+let awaitingSwearMultiplier = false;
 
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
@@ -33,7 +34,8 @@ bot.on('text', async (ctx) => {
                 inline_keyboard: [
                     [
                         { text: '⚡️ Частота ответа', callback_data: 'set_probability' },
-                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
+                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' },
+                        { text: '🤬 Частота матов', callback_data: 'set_swear_multiplier' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -44,7 +46,8 @@ bot.on('text', async (ctx) => {
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}`,
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}\n` +
+                `Множитель матов: ${config.SWEAR_MULTIPLIER}`,
                 { reply_markup: keyboard }
             );
             return;
@@ -119,6 +122,20 @@ bot.on('text', async (ctx) => {
             }
         }
 
+        // Добавляем обработку ввода множителя в обработчик сообщений
+        if (awaitingSwearMultiplier && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
+            const multiplier = parseInt(ctx.message.text);
+            if (!isNaN(multiplier) && multiplier >= 1 && multiplier <= 10) {
+                config.SWEAR_MULTIPLIER = multiplier;
+                await ctx.reply(`✅ Множитель матов установлен на ${multiplier}`);
+                awaitingSwearMultiplier = false;
+                return;
+            } else {
+                await ctx.reply('❌ Пожалуйста, введите число от 1 до 10');
+                return;
+            }
+        }
+
     } catch (error) {
         // Проверяем ошибку на миграцию чата
         if (error.response?.parameters?.migrate_to_chat_id) {
@@ -186,6 +203,26 @@ bot.action('set_reaction_probability', async (ctx) => {
         );
     } catch (error) {
         console.error('Ошибка при установке вероятности реакций:', error);
+        await ctx.answerCbQuery('Произошла ошибка');
+    }
+});
+
+// Добавляем обработчик для установки множителя матов
+bot.action('set_swear_multiplier', async (ctx) => {
+    try {
+        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
+            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+        }
+        
+        awaitingSwearMultiplier = true;
+        await ctx.answerCbQuery();
+        await ctx.reply(
+            '🤬 Введите новый множитель для матов (от 1 до 10).\n' +
+            'Например: 3 - маты будут встречаться в 3 раза чаще\n' +
+            'Текущее значение: ' + config.SWEAR_MULTIPLIER
+        );
+    } catch (error) {
+        console.error('Ошибка при установке множителя матов:', error);
         await ctx.answerCbQuery('Произошла ошибка');
     }
 });

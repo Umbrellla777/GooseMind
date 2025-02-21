@@ -179,14 +179,17 @@ async function handleCallback(ctx, action) {
     try {
         // Проверяем доступ
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            await ctx.answerCallbackQuery('Только @Umbrellla777 может использовать эти кнопки');
+            await ctx.telegram.answerCallbackQuery(
+                ctx.callbackQuery.id,
+                'Только @Umbrellla777 может использовать эти кнопки'
+            );
             return;
         }
 
         switch (action) {
             case 'set_probability':
                 awaitingProbability = true;
-                await ctx.answerCallbackQuery('Введите новую вероятность');
+                await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, 'Введите новую вероятность');
                 await ctx.reply(
                     '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
                     'Например: 10 - ответ на 10% сообщений\n' +
@@ -196,7 +199,7 @@ async function handleCallback(ctx, action) {
 
             case 'set_reaction_probability':
                 awaitingReactionProbability = true;
-                await ctx.answerCallbackQuery('Введите новую вероятность реакций');
+                await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, 'Введите новую вероятность реакций');
                 await ctx.reply(
                     '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
                     'Например: 15 - реакция на 15% сообщений\n' +
@@ -234,10 +237,10 @@ async function handleCallback(ctx, action) {
                         `Маты: ${status}`;
 
                     await ctx.editMessageText(newText, { reply_markup: newKeyboard });
-                    await ctx.answerCallbackQuery(`Маты ${status}`);
+                    await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, `Маты ${status}`);
                 } catch (error) {
                     if (error.description?.includes('message is not modified')) {
-                        await ctx.answerCallbackQuery(`Маты ${status}`);
+                        await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, `Маты ${status}`);
                     } else {
                         throw error;
                     }
@@ -245,18 +248,21 @@ async function handleCallback(ctx, action) {
                 break;
 
             case 'clear_db':
-                await ctx.answerCallbackQuery('Очистка базы данных...');
+                await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, 'Очистка базы данных...');
                 await messageHandler.clearDatabase();
                 await ctx.reply('✅ База данных успешно очищена!');
                 break;
 
             default:
-                await ctx.answerCallbackQuery('Неизвестное действие');
+                await ctx.telegram.answerCallbackQuery(ctx.callbackQuery.id, 'Неизвестное действие');
         }
     } catch (error) {
         console.error('Ошибка обработки callback:', error);
         try {
-            await ctx.answerCallbackQuery('Произошла ошибка').catch(() => {});
+            await ctx.telegram.answerCallbackQuery(
+                ctx.callbackQuery.id,
+                'Произошла ошибка'
+            ).catch(() => {});
             await ctx.reply('Произошла ошибка: ' + error.message).catch(() => {});
         } catch (e) {
             console.error('Ошибка отправки уведомления об ошибке:', e);

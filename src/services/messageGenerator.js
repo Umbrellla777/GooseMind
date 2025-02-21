@@ -140,7 +140,11 @@ class MessageGenerator {
         
         // Повышаем релевантность матов для более частого их использования
         if (this.isSwearWord(word)) {
-            relevance += 2 * config.SWEAR_MULTIPLIER; // Используем настраиваемый множитель
+            // Если множитель 0, игнорируем маты
+            if (config.SWEAR_MULTIPLIER === 0) {
+                return -1; // Отрицательная релевантность, чтобы исключить слово
+            }
+            relevance += 2 * config.SWEAR_MULTIPLIER;
         }
         
         // Добавляем случайные забавные слова
@@ -430,6 +434,11 @@ class MessageGenerator {
                 wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
                 // Если находим мат, добавляем его с повышенной частотой
                 if (this.isSwearWord(word)) {
+                    // Пропускаем маты если они отключены
+                    if (config.SWEAR_MULTIPLIER === 0) {
+                        wordFrequency.delete(word);
+                        return;
+                    }
                     wordFrequency.set(word, (wordFrequency.get(word) || 0) + config.SWEAR_MULTIPLIER);
                 }
             });

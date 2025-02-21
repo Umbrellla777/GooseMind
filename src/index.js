@@ -125,13 +125,16 @@ bot.on('text', async (ctx) => {
         // Добавляем обработку ввода множителя в обработчик сообщений
         if (awaitingSwearMultiplier && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
             const multiplier = parseInt(ctx.message.text);
-            if (!isNaN(multiplier) && multiplier >= 1 && multiplier <= 10) {
+            if (!isNaN(multiplier) && multiplier >= 0 && multiplier <= 10) {
                 config.SWEAR_MULTIPLIER = multiplier;
-                await ctx.reply(`✅ Множитель матов установлен на ${multiplier}`);
+                const message = multiplier === 0 
+                    ? '✅ Маты отключены' 
+                    : `✅ Множитель матов установлен на ${multiplier}`;
+                await ctx.reply(message);
                 awaitingSwearMultiplier = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 10');
+                await ctx.reply('❌ Пожалуйста, введите число от 0 до 10');
                 return;
             }
         }
@@ -217,8 +220,9 @@ bot.action('set_swear_multiplier', async (ctx) => {
         awaitingSwearMultiplier = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '🤬 Введите новый множитель для матов (от 1 до 10).\n' +
+            '🤬 Введите новый множитель для матов (от 0 до 10).\n' +
             'Например: 3 - маты будут встречаться в 3 раза чаще\n' +
+            '0 - маты отключены\n' +
             'Текущее значение: ' + config.SWEAR_MULTIPLIER
         );
     } catch (error) {

@@ -14,7 +14,6 @@ const messageGenerator = new MessageGenerator(supabase);
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
 let awaitingSwearMultiplier = false;
-let awaitingSwearChance = false;
 
 // Обработка новых сообщений
 bot.on('text', async (ctx) => {
@@ -35,11 +34,8 @@ bot.on('text', async (ctx) => {
                 inline_keyboard: [
                     [
                         { text: '⚡️ Частота ответа', callback_data: 'set_probability' },
-                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
-                    ],
-                    [
-                        { text: '🤬 Множитель матов', callback_data: 'set_swear_multiplier' },
-                        { text: '🎲 Шанс матов', callback_data: 'set_swear_chance' }
+                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' },
+                        { text: '🤬 Частота матов', callback_data: 'set_swear_multiplier' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -49,10 +45,9 @@ bot.on('text', async (ctx) => {
 
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
-                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Множитель матов: ${config.SWEAR_MULTIPLIER}\n` +
-                `Шанс матов: ${(config.SWEAR_CHANCE * 100).toFixed(0)}%`,
+                `Вероятность ответа: ${config.RESPONSE_PROBABILITY}\n` +
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}\n` +
+                `Множитель матов: ${config.SWEAR_MULTIPLIER}`,
                 { reply_markup: keyboard }
             );
             return;
@@ -60,28 +55,28 @@ bot.on('text', async (ctx) => {
 
         // Проверяем, ожидаем ли ввод вероятности ответов
         if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+            const prob = parseFloat(ctx.message.text);
+            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
                 config.RESPONSE_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
+                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}`);
                 awaitingProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
                 return;
             }
         }
 
         // Добавляем проверку для вероятности реакций
         if (awaitingReactionProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+            const prob = parseFloat(ctx.message.text);
+            if (!isNaN(prob) && prob >= 0.01 && prob <= 1) {
                 config.REACTION_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
+                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}`);
                 awaitingReactionProbability = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                await ctx.reply('❌ Пожалуйста, введите число от 0.01 до 1');
                 return;
             }
         }
@@ -104,7 +99,7 @@ bot.on('text', async (ctx) => {
         }
         
         // Случайная генерация сообщений и реакций
-        if (Math.random() < config.RESPONSE_PROBABILITY / 100) {
+        if (Math.random() < config.RESPONSE_PROBABILITY) {
             const response = await messageGenerator.generateResponse(ctx.message);
             await ctx.reply(response);
         }
@@ -129,33 +124,17 @@ bot.on('text', async (ctx) => {
 
         // Добавляем обработку ввода множителя в обработчик сообщений
         if (awaitingSwearMultiplier && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const multiplier = parseFloat(ctx.message.text);
+            const multiplier = parseInt(ctx.message.text);
             if (!isNaN(multiplier) && multiplier >= 0 && multiplier <= 10) {
-                // Округляем до ближайшего шага 0.2
-                const roundedMultiplier = Math.round(multiplier * 5) / 5;
-                config.SWEAR_MULTIPLIER = roundedMultiplier;
+                config.SWEAR_MULTIPLIER = multiplier;
                 const message = multiplier === 0 
                     ? '✅ Маты отключены' 
-                    : `✅ Множитель матов установлен на ${roundedMultiplier.toFixed(1)}`;
+                    : `✅ Множитель матов установлен на ${multiplier}`;
                 await ctx.reply(message);
                 awaitingSwearMultiplier = false;
                 return;
             } else {
                 await ctx.reply('❌ Пожалуйста, введите число от 0 до 10');
-                return;
-            }
-        }
-
-        // Добавляем обработку ввода шанса матов
-        if (awaitingSwearChance && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const chance = parseInt(ctx.message.text);
-            if (!isNaN(chance) && chance >= 0 && chance <= 100) {
-                config.SWEAR_CHANCE = chance / 100;
-                await ctx.reply(`✅ Шанс матов установлен на ${chance}%`);
-                awaitingSwearChance = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
                 return;
             }
         }
@@ -186,9 +165,9 @@ bot.action('set_probability', async (ctx) => {
         awaitingProbability = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '📊 Введите новую вероятность ответа (от 1 до 100%).\n' +
-            'Например: 10 - ответ на 10% сообщений\n' +
-            'Текущее значение: ' + config.RESPONSE_PROBABILITY + '%'
+            '📊 Введите новую вероятность ответа (от 0.01 до 1).\n' +
+            'Например: 0.1 - ответ на 10% сообщений\n' +
+            'Текущее значение: ' + config.RESPONSE_PROBABILITY
         );
     } catch (error) {
         console.error('Ошибка при установке вероятности:', error);
@@ -221,9 +200,9 @@ bot.action('set_reaction_probability', async (ctx) => {
         awaitingReactionProbability = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
-            'Например: 15 - реакция на 15% сообщений\n' +
-            'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
+            '😎 Введите новую вероятность реакций (от 0.01 до 1).\n' +
+            'Например: 0.15 - реакция на 15% сообщений\n' +
+            'Текущее значение: ' + config.REACTION_PROBABILITY
         );
     } catch (error) {
         console.error('Ошибка при установке вероятности реакций:', error);
@@ -241,34 +220,13 @@ bot.action('set_swear_multiplier', async (ctx) => {
         awaitingSwearMultiplier = true;
         await ctx.answerCbQuery();
         await ctx.reply(
-            '🤬 Введите новый множитель для матов (от 0 до 10, шаг 0.2).\n' +
-            'Например: 1.4 - маты будут встречаться в 1.4 раза чаще\n' +
+            '🤬 Введите новый множитель для матов (от 0 до 10).\n' +
+            'Например: 3 - маты будут встречаться в 3 раза чаще\n' +
             '0 - маты отключены\n' +
-            'Текущее значение: ' + config.SWEAR_MULTIPLIER.toFixed(1)
+            'Текущее значение: ' + config.SWEAR_MULTIPLIER
         );
     } catch (error) {
         console.error('Ошибка при установке множителя матов:', error);
-        await ctx.answerCbQuery('Произошла ошибка');
-    }
-});
-
-// Добавляем обработчик для установки шанса матов
-bot.action('set_swear_chance', async (ctx) => {
-    try {
-        if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
-            return ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-        }
-        
-        awaitingSwearChance = true;
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            '🎲 Введите шанс использования матов (от 0 до 100%).\n' +
-            'Например: 30 - маты будут в 30% предложений\n' +
-            '0 - маты не используются\n' +
-            'Текущее значение: ' + (config.SWEAR_CHANCE * 100).toFixed(0) + '%'
-        );
-    } catch (error) {
-        console.error('Ошибка при установке шанса матов:', error);
         await ctx.answerCbQuery('Произошла ошибка');
     }
 });

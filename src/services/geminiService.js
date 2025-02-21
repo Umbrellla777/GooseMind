@@ -73,34 +73,6 @@ class GeminiService {
             return text;
         }
     }
-
-    async generateContinuation(baseText, inputText, allowSwears) {
-        try {
-            const prompt = `Контекст: Ты - полуумный гусь, который отвечает на сообщения в чате.
-                           Используя эти фразы как основу: "${baseText}"
-                           Сгенерируй ответ на сообщение: "${inputText}"
-                           
-                           Правила:
-                           1. Используй разговорный стиль
-                           2. Можно использовать сленг
-                           3. ${allowSwears ? 'НУЖНО использовать маты' : 'НЕ используй маты'}
-                           4. Ответ должен быть одним предложением
-                           5. Используй минимум 2 слова из базовых фраз
-                           
-                           Отвечай ТОЛЬКО готовым предложением.`;
-
-            const result = await this.model.generateContent({
-                contents: [{
-                    parts: [{ text: prompt }]
-                }]
-            });
-
-            return result.response.text().trim();
-        } catch (error) {
-            console.error('Gemini continuation error:', error);
-            return "Гусь молчит...";
-        }
-    }
 }
 
 module.exports = { GeminiService }; 

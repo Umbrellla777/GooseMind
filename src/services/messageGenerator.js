@@ -500,52 +500,82 @@ class MessageGenerator {
             console.log('Начало сохранения сообщения:', {
                 message_id: message.message_id,
                 chat_id: message.chat.id,
-                text: message.text.substring(0, 50)
+                text: message.text?.substring(0, 50)
             });
 
-            // Транзакция для атомарного сохранения
-            const { data: result, error } = await this.supabase.rpc('save_message_with_phrases', {
-                p_message_id: message.message_id,
-                p_chat_id: message.chat.id,
-                p_chat_title: message.chat?.title || '',
-                p_chat_type: message.chat?.type || 'private',
-                p_user_id: message.from?.id,
-                p_username: message.from?.username || '',
-                p_first_name: message.from?.first_name || '',
-                p_last_name: message.from?.last_name || '',
-                p_reply_to_message_id: message.reply_to_message?.message_id || null,
-                p_text: message.text,
-                p_message_type: 'text'
-            });
-
-            if (error) {
-                console.error('Ошибка сохранения сообщения:', {
-                    error: error.message,
-                    details: error.details,
-                    hint: error.hint
+            // Сохраняем чат
+            await this.supabase
+                .from('chats')
+                .upsert({
+                    id: message.chat.id,
+                    title: message.chat.title || '',
+                    type: message.chat.type || 'private'
                 });
-                return;
+
+            // Сохраняем пользователя
+            await this.supabase
+                .from('users')
+                .upsert({
+                    id: message.from.id,
+                    username: message.from.username || '',
+                    first_name: message.from.first_name || '',
+                    last_name: message.from.last_name || ''
+                });
+
+            // Сохраняем сообщение
+            const { data: savedMessage, error: messageError } = await this.supabase
+                .from('messages')
+                .insert({
+                    message_id: message.message_id,
+                    chat_id: message.chat.id,
+                    user_id: message.from.id,
+                    text: message.text,
+                    type: 'text'
+                })
+                .select()
+                .single();
+
+            if (messageError) {
+                console.error('Ошибка сохранения сообщения:', messageError);
+                return null;
             }
 
-            console.log('Сообщение успешно сохранено:', {
-                result,
-                message_id: message.message_id
-            });
+            // Разбиваем на фразы
+            const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            const phrases = [];
 
-            // Проверим содержимое таблиц
-            const { data: phrases } = await this.supabase
-                .from('phrases')
-                .select('*')
-                .eq('chat_id', message.chat.id)
-                .order('created_at', { ascending: false })
-                .limit(5);
+            for (let i = 0; i < words.length - 1; i++) {
+                phrases.push({
+                    chat_id: message.chat.id,
+                    message_id: savedMessage.id,
+                    phrase: `${words[i]} ${words[i + 1]}`
+                });
 
-            console.log('Последние фразы:', phrases);
+                if (i < words.length - 2) {
+                    phrases.push({
+                        chat_id: message.chat.id,
+                        message_id: savedMessage.id,
+                        phrase: `${words[i]} ${words[i + 1]} ${words[i + 2]}`
+                    });
+                }
+            }
 
-            return result;
+            if (phrases.length > 0) {
+                const { error: phrasesError } = await this.supabase
+                    .from('phrases')
+                    .insert(phrases);
 
+                if (phrasesError) {
+                    console.error('Ошибка сохранения фраз:', phrasesError);
+                } else {
+                    console.log(`Сохранено ${phrases.length} фраз`);
+                }
+            }
+
+            return savedMessage;
         } catch (error) {
-            console.error('Ошибка сохранения сообщения:', error);
+            console.error('Ошибка сохранения:', error);
+            return null;
         }
     }
 
@@ -569,32 +599,28 @@ class MessageGenerator {
     async saveMessageDirect(message) {
         try {
             console.log('Начало прямого сохранения сообщения:', {
-                text: message.text.substring(0, 50),
+                text: message.text?.substring(0, 50),
                 chat_id: message.chat.id
             });
 
             // Сохраняем чат
             await this.supabase
                 .from('chats')
-                .insert({
+                .upsert({
                     id: message.chat.id,
                     title: message.chat.title || '',
                     type: message.chat.type || 'private'
-                })
-                .onConflict('id')
-                .merge();
+                });
 
             // Сохраняем пользователя
             await this.supabase
                 .from('users')
-                .insert({
+                .upsert({
                     id: message.from.id,
                     username: message.from.username || '',
                     first_name: message.from.first_name || '',
                     last_name: message.from.last_name || ''
-                })
-                .onConflict('id')
-                .merge();
+                });
 
             // Сохраняем сообщение
             const { data: savedMessage, error: messageError } = await this.supabase
@@ -619,7 +645,7 @@ class MessageGenerator {
             }
 
             // Разбиваем на фразы
-            const words = message.text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            const words = message.text?.toLowerCase().split(/\s+/).filter(w => w.length > 0) || [];
             const phrases = [];
 
             for (let i = 0; i < words.length - 1; i++) {

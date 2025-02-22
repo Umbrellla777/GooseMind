@@ -133,27 +133,22 @@ bot.on('message_reaction', async (ctx) => {
         
         if (isPoopReaction) {
             try {
-                // Получаем сообщение из чата
-                const message = await ctx.telegram.getMessage(
-                    reaction.chat.id,
-                    reaction.message_id
-                ).catch(() => null);
-
                 // Получаем информацию о сообщении через API
-                const result = await ctx.telegram.callApi('getMessage', {
-                    chat_id: reaction.chat.id,
-                    message_id: reaction.message_id
-                }).catch(() => null);
+                const result = await ctx.telegram.callApi('getChat', {
+                    chat_id: reaction.chat.id
+                });
 
-                console.log('Информация о сообщении:', result);
+                console.log('Информация о чате:', result);
 
-                // Проверяем, что сообщение от нашего бота
-                const isBotMessage = result?.from?.username === 'GooseMind_bot';
+                // Проверяем, что это сообщение от бота
+                const botInfo = await ctx.telegram.getMe();
+                const isBotMessage = reaction.message?.from?.id === botInfo.id;
 
                 console.log('Проверка сообщения:', {
                     messageId: reaction.message_id,
                     isBotMessage: isBotMessage,
-                    fromUser: result?.from?.username
+                    botId: botInfo.id,
+                    messageFromId: reaction.message?.from?.id
                 });
 
                 if (isBotMessage) {

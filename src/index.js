@@ -331,59 +331,84 @@ const POOP_REACTION_RESPONSES = [
     "@user, твоя «какаха» это как попытка выразить себя, но получилось как всегда."
 ];
 
-// Обработчик реакций (обновленная версия)
+// Обработчик реакций (отладочная версия)
 bot.on('message_reaction_update', async (ctx) => {
     try {
-        console.log('Получена реакция:', ctx.update.message_reaction);
+        console.log('=== ПОЛУЧЕНА РЕАКЦИЯ ===');
+        console.log('Весь контекст:', JSON.stringify(ctx.update, null, 2));
 
-        // Проверяем, что это реакция на сообщение бота
-        const messageAuthorId = ctx.update.message_reaction.message_id?.from?.id;
-        if (messageAuthorId !== ctx.botInfo.id) {
-            return;
-        }
+        // Получаем данные о сообщении и реакции
+        const messageReaction = ctx.update.message_reaction;
+        console.log('Message Reaction:', messageReaction);
 
-        // Проверяем, что это новая реакция 💩
-        const newReactions = ctx.update.message_reaction.new_reaction || [];
-        const hasPoopReaction = newReactions.some(reaction => 
-            reaction.type === 'emoji' && reaction.emoji === '💩'
-        );
+        // Проверяем реакцию 💩
+        const newReactions = messageReaction.new_reaction || [];
+        console.log('Новые реакции:', newReactions);
+
+        const hasPoopReaction = newReactions.some(reaction => {
+            console.log('Проверяем реакцию:', reaction);
+            return reaction.type === 'emoji' && reaction.emoji === '💩';
+        });
+
+        console.log('Есть реакция 💩:', hasPoopReaction);
 
         if (!hasPoopReaction) {
+            console.log('Нет реакции 💩, выходим');
             return;
         }
 
-        // Получаем информацию о пользователе
-        const userId = ctx.update.message_reaction.user?.id;
+        // Получаем данные пользователя
+        const userId = messageReaction.user?.id;
+        console.log('ID пользователя:', userId);
+
         if (!userId) {
+            console.log('Нет ID пользователя, выходим');
             return;
         }
 
-        // Получаем username пользователя
         try {
-            const user = await ctx.telegram.getChat(userId);
-            const username = user.username;
-            
+            // Получаем информацию о пользователе напрямую из контекста
+            const username = messageReaction.user?.username;
+            console.log('Username из контекста:', username);
+
             if (!username) {
-                return;
+                console.log('Нет username, пробуем получить через getChat');
+                const user = await ctx.telegram.getChat(userId);
+                console.log('Данные пользователя через getChat:', user);
+                
+                if (!user.username) {
+                    console.log('Username не найден, выходим');
+                    return;
+                }
             }
 
-            // Выбираем случайный ответ
+            // Выбираем и отправляем ответ
+            const finalUsername = username || user.username;
+            console.log('Финальный username:', finalUsername);
+
             const response = POOP_REACTION_RESPONSES[
                 Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-            ].replace('@user', '@' + username);
+            ].replace('@user', '@' + finalUsername);
 
-            // Отправляем ответ
+            console.log('Отправляем ответ:', response);
+            console.log('В чат:', messageReaction.chat_id);
+
             await ctx.telegram.sendMessage(
-                ctx.update.message_reaction.chat_id,
-                response
+                messageReaction.chat_id,
+                response,
+                { parse_mode: 'HTML' }
             );
 
+            console.log('Ответ отправлен успешно');
+
         } catch (error) {
-            console.error('Error getting user info:', error);
+            console.error('Ошибка при получении данных пользователя:', error);
+            console.error('Полный стек ошибки:', error.stack);
         }
 
     } catch (error) {
-        console.error('Error handling reaction:', error);
+        console.error('Общая ошибка обработки реакции:', error);
+        console.error('Полный стек ошибки:', error.stack);
     }
 });
 

@@ -264,8 +264,6 @@ class MessageGenerator {
 
     async generateLocalResponse(message) {
         try {
-            console.log('Начало генерации ответа');
-
             // Получаем все фразы из текущего чата
             const { data: chatPhrases, error: phrasesError } = await this.supabase
                 .from('phrases')
@@ -290,14 +288,9 @@ class MessageGenerator {
                 }
             }
 
-            console.log(`Всего найдено фраз: ${allPhrases.length}`);
+            if (allPhrases.length === 0) return "Гусь молчит...";
 
-            if (allPhrases.length === 0) {
-                console.log('Фразы не найдены');
-                return "Гусь молчит...";
-            }
-
-            // Получаем все фразы с матами для возможного использования
+            // Получаем фразы с матами
             let swearPhrases = [];
             if (config.SWEAR_PROBABILITY > 0) {
                 const { data: swears } = await this.supabase
@@ -309,25 +302,22 @@ class MessageGenerator {
                         'phrase.ilike.%пох%,phrase.ilike.%пидр%'
                     );
                 
-                if (swears && swears.length > 0) {
+                if (swears?.length > 0) {
                     swearPhrases = swears.map(s => s.phrase);
-                    console.log(`Найдено ${swearPhrases.length} фраз с матами`);
                 }
             }
 
-            // Выбираем случайное количество фраз (1-3)
+            // Выбираем фразы
             const phraseCount = Math.floor(Math.random() * 3) + 1;
             const selectedPhrases = [];
 
-            // Если включены маты и есть матные фразы, с вероятностью добавляем одну
+            // Добавляем матную фразу если нужно
             if (config.SWEAR_PROBABILITY > 0 && swearPhrases.length > 0 && 
                 Math.random() * 100 < config.SWEAR_PROBABILITY) {
-                const swearPhrase = swearPhrases[Math.floor(Math.random() * swearPhrases.length)];
-                selectedPhrases.push(swearPhrase);
-                console.log('Добавлена фраза с матом:', swearPhrase);
+                selectedPhrases.push(swearPhrases[Math.floor(Math.random() * swearPhrases.length)]);
             }
 
-            // Добавляем остальные случайные фразы
+            // Добавляем остальные фразы
             while (selectedPhrases.length < phraseCount && allPhrases.length > 0) {
                 const index = Math.floor(Math.random() * allPhrases.length);
                 const phrase = allPhrases[index].phrase;
@@ -335,13 +325,10 @@ class MessageGenerator {
                 if (!message.text.toLowerCase().includes(phrase.toLowerCase())) {
                     selectedPhrases.push(phrase);
                 }
-                
                 allPhrases.splice(index, 1);
             }
 
-            console.log('Выбранные фразы:', selectedPhrases);
-
-            // Получаем контекст из последних сообщений
+            // Получаем контекст
             const { data: recentMessages } = await this.supabase
                 .from('messages')
                 .select('text')
@@ -350,23 +337,16 @@ class MessageGenerator {
                 .limit(10);
 
             const context = recentMessages?.map(m => m.text).join('\n') || '';
-
-            // Объединяем фразы для Gemini
             const basePhrase = selectedPhrases.join('. ');
-            console.log('Базовые фразы для генерации:', basePhrase);
 
             // Генерируем ответ
-            console.log('Отправляем запрос в Gemini');
-            const response = await this.gemini.generateContinuation(
+            return await this.gemini.generateContinuation(
                 basePhrase,
                 context,
                 message.text,
                 config.SWEAR_PROBABILITY,
-                swearPhrases // передаем список фраз с матами
+                swearPhrases
             );
-
-            console.log('Ответ от Gemini:', response);
-            return response;
         } catch (error) {
             console.error('Error generating response:', error);
             return "Гусь молчит...";

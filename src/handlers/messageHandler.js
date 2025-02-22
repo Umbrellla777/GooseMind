@@ -1,15 +1,13 @@
 const config = require('../config');
 const { MessageGenerator } = require('../services/messageGenerator');
 
-// Константы для реакций
-const REACTIONS = {
-    POSITIVE: ['👍', '❤️', '🔥', '🥰', '👏'],
-    NEGATIVE: ['👎', '💩', '🤮'],
-    FUNNY: ['🤣', '😂'],
-    THINKING: ['🤔'],
-    SURPRISED: ['😱', '🤯'],
-    RANDOM: ['🦆', '❤️‍🔥', '🤨', '🖕', '💩']
-};
+// Упрощаем список реакций до одного массива
+const REACTIONS = [
+    '👍', '❤️', '🔥', '🥰', '👏',
+    '🤔', '🤯', '😱', '🤬', '😢',
+    '🎉', '🤩', '🤮', '💩', '🙏',
+    '👎', '❤️‍🔥', '🤨', '🖕'
+];
 
 class MessageHandler {
     constructor(supabase) {
@@ -52,63 +50,35 @@ class MessageHandler {
     async analyzeForReaction(message) {
         try {
             // Не реагируем на сообщения бота
-            if (message.from.id === message.botInfo?.id) {
+            if (message.from?.id === message.botInfo?.id) {
                 return null;
             }
 
-            // Сразу проверяем вероятность реакции
+            // Проверяем основную вероятность реакции из настроек
             if (Math.random() * 100 >= config.REACTION_PROBABILITY) {
                 return null;
             }
 
-            // Анализируем текст сообщения
-            const text = message.text.toLowerCase();
-            const words = this.parseMessage(text);
+            // Всегда ставим одну случайную реакцию
+            const reactions = [
+                REACTIONS[Math.floor(Math.random() * REACTIONS.length)]
+            ];
 
-            // Выбираем тип реакции на основе анализа
-            let reactionType = this.selectReactionType(text, words);
+            // В 30% случаев добавляем вторую реакцию
+            const SECOND_REACTION_CHANCE = 30; // 30%
+            if (Math.random() * 100 < SECOND_REACTION_CHANCE) {
+                let secondReaction;
+                do {
+                    secondReaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
+                } while (secondReaction === reactions[0]); // Избегаем повторений
+                reactions.push(secondReaction);
+            }
 
-            // Возвращаем реакцию
-            return this.getRandomReaction(reactionType);
+            return reactions;
         } catch (error) {
             console.error('Error analyzing for reaction:', error);
             return null;
         }
-    }
-
-    selectReactionType(text, words) {
-        // Позитивные слова
-        const positiveWords = ['круто', 'класс', 'супер', 'отлично', 'хорошо', 'да', 'согласен'];
-        // Негативные слова
-        const negativeWords = ['плохо', 'ужас', 'отстой', 'нет', 'не согласен', 'говно', 'дерьмо', 'хрень'];
-        // Смешные слова
-        const funnyWords = ['ахах', 'хах', 'лол', 'кек', 'смешно', 'ржака'];
-        // Думающие слова
-        const thinkingWords = ['думаю', 'полагаю', 'кажется', 'возможно', 'наверное'];
-
-        // Проверяем наличие слов в тексте
-        if (words.some(word => negativeWords.includes(word))) return 'NEGATIVE';
-        if (words.some(word => funnyWords.includes(word))) return 'FUNNY';
-        if (words.some(word => positiveWords.includes(word))) return 'POSITIVE';
-        if (words.some(word => thinkingWords.includes(word))) return 'THINKING';
-        
-        // Если не нашли специальных слов, возвращаем случайный тип с большим шансом на RANDOM
-        const types = ['POSITIVE', 'NEGATIVE', 'RANDOM', 'RANDOM', 'RANDOM']; // Увеличили шанс случайных реакций
-        return types[Math.floor(Math.random() * types.length)];
-    }
-
-    getRandomReaction(type) {
-        const reactions = REACTIONS[type];
-        if (!reactions) return null;
-
-        // Увеличим шанс на дополнительную реакцию
-        if (Math.random() < 0.3) { // 30% шанс добавить случайную реакцию
-            const mainReaction = reactions[Math.floor(Math.random() * reactions.length)];
-            const extraReaction = Math.random() < 0.5 ? '💩' : REACTIONS.RANDOM[Math.floor(Math.random() * REACTIONS.RANDOM.length)];
-            return [mainReaction, extraReaction];
-        }
-
-        return [reactions[Math.floor(Math.random() * reactions.length)]];
     }
 
     async checkDatabaseContent(chatId) {

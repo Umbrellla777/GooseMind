@@ -263,7 +263,9 @@ module.exports = {
     },
     GEMINI: {
         API_KEY: process.env.GEMINI_API_KEY,
-        MODEL: 'gemini-2.0-flash'
+        MODEL: 'gemini-pro',
+        MAX_TOKENS: 100,
+        TEMPERATURE: 0.8
     },
     DOH_SERVER: process.env.DOH_SERVER,
     KARMA: {
@@ -313,6 +315,42 @@ module.exports = {
     LLAMA: {
         API_KEY: process.env.LLAMA_API_KEY || process.env.RAILWAY_LLAMA_API_KEY,
         MODEL: 'llama-2-70b-chat',
+        MAX_TOKENS: 100,
+        TEMPERATURE: 0.8,
+        BASE_URL: 'https://api.llama.ai'
+    },
+    GPT4ALL: {
+        API_KEY: process.env.GPT4ALL_API_KEY,
+        BASE_URL: 'https://api.gpt4all.io/v1',
+        MODEL: 'gpt4all-j-v1.3-groovy',  // или другая доступная модель
+        MAX_TOKENS: 100,
+        TEMPERATURE: 0.8
+    },
+    FREE_GPT: {
+        // Бесплатное API (можно использовать любой из этих URL)
+        BASE_URL: 'https://free.churchless.tech/v1',
+        // или 'https://api.freegpt.one/v1'
+        // или 'https://api.freechatgpt.chat/v1'
+    },
+    YOU: {
+        API_KEY: process.env.YOU_API_KEY, // Бесплатный ключ можно получить на you.com/api
+        BASE_URL: 'https://api.you.com/api/chat',
+        MAX_TOKENS: 100,
+        TEMPERATURE: 0.8
+    },
+    KOBOLD: {
+        // Публичные эндпоинты, можно использовать любой
+        BASE_URL: 'https://koboldai.ngrok.io',
+        // или 'https://kobold.ai'
+        // или 'https://api.koboldai.dev'
+    },
+    HUGGINGFACE: {
+        // Публичные модели, можно использовать любую
+        MODELS: {
+            CHAT: 'OpenAssistant/oasst-sft-4-pythia-12b-epoch-3.5',
+            RUSSIAN: 'Den4ikAI/FRED-T5-LARGE_text_generation',
+            COMPLETION: 'bigscience/bloomz-7b1'
+        },
         MAX_TOKENS: 100,
         TEMPERATURE: 0.8
     },

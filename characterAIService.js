@@ -5,60 +5,29 @@ class CharacterAIService {
     constructor() {
         this.characterAI = new CharacterAI();
         this.chat = null;
-        this.initialize();
         
-        // Проверяем токен каждый день
-        setInterval(() => this.checkToken(), 24 * 60 * 60 * 1000);
+        // Устанавливаем максимальное количество слушателей
+        process.setMaxListeners(5);
+        
+        this.initialize();
     }
 
     async initialize() {
         try {
-            await this.characterAI.authenticateWithToken(config.CHARACTER_AI.TOKEN);
-            
-            // Создаем чат
-            this.chat = await this.characterAI.createOrContinueChat(
-                config.CHARACTER_AI.CHARACTER_ID
-            );
+            // Настраиваем Puppeteer
+            this.characterAI.requester.puppeteerPath = '/usr/bin/chromium';
+            this.characterAI.requester.puppeteerLaunchArgs = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--no-first-run'
+            ];
 
-            console.log('CharacterAI initialized successfully');
-            await this.checkToken(); // Проверяем токен при запуске
+            // Пробуем гостевой режим сразу
+            await this.initializeAsGuest();
+
         } catch (error) {
-            if (error.message.includes('token expired')) {
-                console.error('Token expired, switching to guest mode');
-                await this.initializeAsGuest();
-            } else {
-                console.error('CharacterAI init error:', error);
-                await this.initializeAsGuest();
-            }
-        }
-    }
-
-    async checkToken() {
-        try {
-            const token = config.CHARACTER_AI.TOKEN;
-            if (!token) return;
-
-            // Декодируем JWT токен
-            const [header, payload, signature] = token.split('.');
-            const decodedPayload = JSON.parse(Buffer.from(payload, 'base64').toString());
-
-            // Получаем время истечения токена
-            const expirationDate = new Date(decodedPayload.exp * 1000);
-            const now = new Date();
-            const daysUntilExpiration = Math.floor((expirationDate - now) / (1000 * 60 * 60 * 24));
-
-            if (daysUntilExpiration <= 3) {
-                console.warn(`⚠️ ВНИМАНИЕ: Токен Character AI истекает через ${daysUntilExpiration} дней!`);
-                // Можно добавить отправку уведомления в телеграм
-                if (this.bot) {
-                    await this.bot.telegram.sendMessage(
-                        config.ADMIN_CHAT_ID,
-                        `⚠️ Токен Character AI истекает через ${daysUntilExpiration} дней!\nНеобходимо обновить токен.`
-                    );
-                }
-            }
-        } catch (error) {
-            console.error('Error checking token:', error);
+            console.error('CharacterAI init error:', error);
         }
     }
 
@@ -71,6 +40,8 @@ class CharacterAIService {
             console.log('CharacterAI initialized as guest');
         } catch (error) {
             console.error('Guest auth failed:', error);
+            // Пробуем переинициализировать через 5 секунд
+            setTimeout(() => this.initializeAsGuest(), 5000);
         }
     }
 
@@ -83,7 +54,6 @@ class CharacterAIService {
             const characterSettings = config.CHARACTER_SETTINGS[characterType];
             const karma = parseInt(characterType.match(/-?\d+/)?.[0] || '0');
 
-            // Формируем промпт с учетом характера
             const prompt = `[Характер: ${characterSettings.name}
             Карма: ${karma}
             Особенности: ${characterSettings.traits.join(', ')}]
@@ -92,7 +62,6 @@ class CharacterAIService {
 
             const response = await this.chat.sendAndAwaitResponse(prompt, true);
             
-            // Пост-обработка для усиления характера
             if (karma <= -500) {
                 return this.enhanceNegativeResponse(response.text, karma);
             }
@@ -101,6 +70,12 @@ class CharacterAIService {
 
         } catch (error) {
             console.error('CharacterAI error:', error);
+            
+            // Если ошибка связана с чатом - пробуем переинициализировать
+            if (error.message.includes('chat') || error.message.includes('token')) {
+                await this.initialize();
+            }
+            
             return "Гусь молчит...";
         }
     }

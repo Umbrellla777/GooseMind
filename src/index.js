@@ -4,6 +4,7 @@ const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
 const { KarmaService } = require('./services/karmaService');
+const { LlamaService } = require('./services/llamaService');
 
 // Настройки для бота
 const botOptions = {
@@ -23,6 +24,7 @@ const messageGenerator = new MessageGenerator(supabase);
 
 // Создаем экземпляр
 const karmaService = new KarmaService(supabase);
+const llama = new LlamaService();
 
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
@@ -355,7 +357,7 @@ bot.on('text', async (ctx) => {
             // Отправляем "печатает" перед генерацией текста
             await ctx.telegram.sendChatAction(ctx.message.chat.id, 'typing');
             
-            const response = await messageGenerator.generateResponse(ctx.message, characterType);
+            const response = await llama.generateContinuation(ctx.message.text, ctx.message.text, characterType);
             
             // Если ответ не пустой и не заглушка - отправляем
             if (response && response !== "Гусь молчит...") {

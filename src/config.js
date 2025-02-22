@@ -310,4 +310,10 @@ module.exports = {
         },
         NOTIFICATION_STEP: 100  // Уведомление каждые 100 очков
     },
+    LLAMA: {
+        API_KEY: process.env.LLAMA_API_KEY || process.env.RAILWAY_LLAMA_API_KEY,
+        MODEL: 'llama-2-70b-chat',
+        MAX_TOKENS: 100,
+        TEMPERATURE: 0.8
+    },
 }; 

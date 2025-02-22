@@ -1,9 +1,12 @@
-const LlamaAI = require('llamaai');
+const { LlamaAPI } = require('@llamaai/core');
 const config = require('../config');
 
 class LlamaService {
     constructor() {
-        this.llama = new LlamaAI(config.LLAMA.API_KEY);
+        this.llama = new LlamaAPI({
+            apiKey: config.LLAMA.API_KEY,
+            baseUrl: 'https://api.llama-api.com'
+        });
     }
 
     getCharacterPrompt(karma, characterSettings) {
@@ -74,7 +77,7 @@ class LlamaService {
             };
 
             // Формируем запрос
-            const apiRequestJson = {
+            const response = await this.llama.chat.completions.create({
                 messages: [
                     systemPrompt,
                     ...recentMessages,
@@ -83,13 +86,10 @@ class LlamaService {
                         content: lastMessage
                     }
                 ],
-                stream: false,
-                temperature: 0.8,
-                max_tokens: 100
-            };
-
-            // Выполняем запрос
-            const response = await this.llama.run(apiRequestJson);
+                model: config.LLAMA.MODEL,
+                temperature: config.LLAMA.TEMPERATURE,
+                max_tokens: config.LLAMA.MAX_TOKENS
+            });
             
             // Обрабатываем ответ
             let generatedText = response.choices[0].message.content.trim();

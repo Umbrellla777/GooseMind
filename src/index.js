@@ -128,24 +128,25 @@ bot.on('message_reaction', async (ctx) => {
         const reaction = ctx.update.message_reaction;
         if (!reaction) return;
 
-        // Получаем ID нашего бота
-        const botId = ctx.botInfo.id;
-        
-        // Проверяем, что это реакция 💩 и она на сообщение бота
+        // Проверяем, что это реакция 💩
         const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
-        const targetMessage = reaction.message;
+        
+        // Получаем информацию о сообщении
+        const messageInfo = {
+            chat_id: reaction.chat.id,
+            message_id: reaction.message_id,
+            from: reaction.message?.from || {}
+        };
 
         console.log('Данные реакции:', {
             isPoopReaction,
-            botId,
-            targetMessageId: reaction.message_id,
-            targetMessageFromId: targetMessage?.from?.id,
-            targetMessageFromUsername: targetMessage?.from?.username,
+            botUsername: 'GooseMind_bot',
+            messageFromUsername: messageInfo.from.username,
             reactionFromUsername: reaction.user?.username
         });
 
-        // Отвечаем только если это реакция 💩 на сообщение бота
-        if (isPoopReaction && targetMessage?.from?.id === botId) {
+        // Проверяем, что это реакция 💩 на сообщение бота
+        if (isPoopReaction && messageInfo.from.username === 'GooseMind_bot') {
             const username = reaction.user?.username;
             if (username) {
                 const response = POOP_REACTION_RESPONSES[

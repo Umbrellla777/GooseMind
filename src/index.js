@@ -208,12 +208,7 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '😇 Мирный', callback_data: 'character_peaceful' },
-                        { text: '😏 Обычный', callback_data: 'character_normal' },
-                    ],
-                    [
-                        { text: '😈 Саркастичный', callback_data: 'character_sarcastic' },
-                        { text: '👿 Агрессивный', callback_data: 'character_aggressive' }
+                        { text: '🔮 Установить карму', callback_data: 'set_karma' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -225,7 +220,7 @@ bot.on('text', async (ctx) => {
                 `Текущие настройки Полумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Характер: ${config.CHARACTER_SETTINGS[config.CHARACTER_TYPE].name}`,
+                `Текущая карма: ${await karmaService.initKarma(ctx.chat.id)}`,
                 { reply_markup: keyboard }
             );
             return;

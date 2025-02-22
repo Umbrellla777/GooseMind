@@ -25,24 +25,20 @@ class KarmaService {
         let karma = await this.initKarma(chatId);
         const oldKarma = karma;
         
-        // Анализируем сообщение
         const karmaChange = await this.analyzeMessage(message);
-        
-        // Обновляем карму
         karma = Math.max(config.KARMA.MIN, Math.min(config.KARMA.MAX, karma + karmaChange));
         
-        // Сохраняем новую карму
         await this.supabase
             .from('chat_karma')
             .upsert({ chat_id: chatId, karma: karma });
         
         this.karmaCache.set(chatId, karma);
 
-        // Проверяем, нужно ли отправить уведомление
-        const oldStep = Math.floor(oldKarma / config.KARMA.NOTIFICATION_STEP);
-        const newStep = Math.floor(karma / config.KARMA.NOTIFICATION_STEP);
+        // Уведомляем только при изменении сотен
+        const oldHundreds = Math.floor(oldKarma / 100);
+        const newHundreds = Math.floor(karma / 100);
         
-        if (oldStep !== newStep) {
+        if (oldHundreds !== newHundreds) {
             const change = karma > oldKarma ? 'повысилась' : 'понизилась';
             await ctx.reply(
                 `🔄 Карма чата ${change} до ${karma}!\n` +
@@ -109,30 +105,55 @@ class KarmaService {
         const text = message.text.toLowerCase();
         const weights = config.KARMA.WEIGHTS;
 
-        // Проверяем наличие матов
-        if (/[матерные_слова]/.test(text)) {
-            karmaChange += weights.SWEARING;
-        }
+        // Анализ матов и оскорблений
+        const swearWords = ['блять', 'сука', 'хуй', 'пизда', 'ебать', 'нахуй'];
+        const insultWords = ['тупой', 'дебил', 'мудак', 'идиот', 'придурок', 'даун'];
+        const toxicWords = ['заткнись', 'отвали', 'отъебись', 'пошел нахуй', 'иди нахер'];
+        
+        // Позитивные слова и фразы
+        const positiveWords = ['спасибо', 'благодарю', 'помогу', 'рад', 'круто', 'классно', 'здорово'];
+        const helpfulWords = ['давай помогу', 'могу помочь', 'подскажу', 'научу', 'объясню'];
+        const friendlyWords = ['друг', 'братан', 'приятель', 'дружище', 'товарищ'];
 
-        // Проверяем оскорбления
-        if (/[оскорбительные_слова]/.test(text)) {
-            karmaChange += weights.INSULTS;
-        }
+        // Подсчет негативных слов
+        let swearCount = swearWords.filter(word => text.includes(word)).length;
+        let insultCount = insultWords.filter(word => text.includes(word)).length;
+        let toxicCount = toxicWords.filter(word => text.includes(word)).length;
 
-        // Проверяем позитивные слова
-        if (/спасибо|благодарю|помогу|рад/.test(text)) {
-            karmaChange += weights.GRATITUDE;
-        }
+        // Подсчет позитивных слов
+        let positiveCount = positiveWords.filter(word => text.includes(word)).length;
+        let helpfulCount = helpfulWords.filter(phrase => text.includes(phrase)).length;
+        let friendlyCount = friendlyWords.filter(word => text.includes(word)).length;
+
+        // Применяем изменения кармы с небольшими шагами
+        karmaChange += swearCount * -3;      // -3 за каждый мат
+        karmaChange += insultCount * -5;     // -5 за каждое оскорбление
+        karmaChange += toxicCount * -7;      // -7 за каждую токсичную фразу
+        karmaChange += positiveCount * 2;    // +2 за каждое позитивное слово
+        karmaChange += helpfulCount * 4;     // +4 за каждое предложение помощи
+        karmaChange += friendlyCount * 3;    // +3 за каждое дружелюбное обращение
 
         // Проверяем эмодзи
-        const positiveEmoji = ['❤️', '👍', '😊', '🙏'];
-        const negativeEmoji = ['👎', '💩', '🖕', '😡'];
+        const positiveEmoji = ['❤️', '👍', '😊', '🙏', '🤗', '😄', '🥰', '😎', '👏'];
+        const negativeEmoji = ['👎', '💩', '🖕', '😡', '🤬', '😤', '��', '🤮'];
         
-        if (message.entities?.some(e => e.type === 'emoji' && positiveEmoji.includes(e.emoji))) {
-            karmaChange += weights.POSITIVE_EMOJI;
+        if (message.entities) {
+            const emojiEntities = message.entities.filter(e => e.type === 'emoji');
+            const positiveEmojiCount = emojiEntities.filter(e => positiveEmoji.includes(e.emoji)).length;
+            const negativeEmojiCount = emojiEntities.filter(e => negativeEmoji.includes(e.emoji)).length;
+            
+            karmaChange += positiveEmojiCount * 1;  // +1 за каждый позитивный эмодзи
+            karmaChange += negativeEmojiCount * -1; // -1 за каждый негативный эмодзи
         }
-        if (message.entities?.some(e => e.type === 'emoji' && negativeEmoji.includes(e.emoji))) {
-            karmaChange += weights.NEGATIVE_EMOJI;
+
+        // Проверяем КАПС
+        if (message.text === message.text.toUpperCase() && message.text.length > 10) {
+            karmaChange -= 2; // -2 за капс
+        }
+
+        // Проверяем спам
+        if (message.text.length > 200 || /(.)\1{4,}/.test(message.text)) {
+            karmaChange -= 3; // -3 за спам
         }
 
         return karmaChange;

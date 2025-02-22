@@ -50,21 +50,15 @@ class MessageHandler {
 
     async analyzeForReaction(message) {
         try {
-            // Не реагируем на сообщения бота
             if (message.from?.id === message.botInfo?.id) {
                 return null;
             }
 
-            // Проверяем основную вероятность реакции из настроек
             if (Math.random() * 100 >= config.REACTION_PROBABILITY) {
                 return null;
             }
 
-            // Выбираем одну случайную реакцию
-            const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
-            console.log('Выбрана реакция:', reaction); // Добавляем лог для отладки
-            return [reaction];
-
+            return [REACTIONS[Math.floor(Math.random() * REACTIONS.length)]];
         } catch (error) {
             console.error('Error analyzing for reaction:', error);
             return null;

@@ -210,6 +210,9 @@ bot.on('text', async (ctx) => {
                 return ctx.reply('Только @Umbrellla777 может использовать эту команду');
             }
 
+            const currentKarma = await messageHandler.getCurrentKarma(ctx.chat.id);
+            const currentCharacter = messageHandler.getCharacterByKarma(currentKarma);
+
             const keyboard = {
                 inline_keyboard: [
                     [
@@ -229,7 +232,7 @@ bot.on('text', async (ctx) => {
                 `Текущие настройки Полумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Текущая карма: ${await messageHandler.getCurrentKarma(ctx.chat.id)}`,
+                `Текущая карма: ${currentKarma} (${currentCharacter.name})`,
                 { reply_markup: keyboard }
             );
             return;
@@ -282,8 +285,13 @@ bot.on('text', async (ctx) => {
             awaitingKarma = false;
             const karma = parseInt(ctx.message.text);
             if (!isNaN(karma) && karma >= -1000 && karma <= 1000) {
-                await messageHandler.setKarma(ctx.chat.id, karma);
-                await ctx.reply(`✅ Карма установлена на ${karma}`);
+                const result = await messageHandler.setKarma(ctx.chat.id, karma);
+                if (result.notify) {
+                    await ctx.reply(result.message);
+                } else {
+                    const character = messageHandler.getCharacterByKarma(karma);
+                    await ctx.reply(`✅ Карма установлена на ${karma} (${character.name})`);
+                }
             } else {
                 await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
             }

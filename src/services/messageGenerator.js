@@ -1,7 +1,7 @@
 const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();
 const PorterStemmerRu = natural.PorterStemmerRu;
-const { GeminiService } = require('./geminiService');
+const { CharacterAIService } = require('./characterAIService');
 const config = require('../config');
 
 class MessageGenerator {
@@ -23,7 +23,7 @@ class MessageGenerator {
         this.contextHistory = new Map(); // chatId -> последние сообщения
         this.MAX_CONTEXT_LENGTH = 5; // Хранить последние 5 сообщений для контекста
         
-        this.gemini = new GeminiService();
+        this.ai = new CharacterAIService();
     }
 
     async getWordsFromDatabase(chatId, inputText) {
@@ -245,7 +245,7 @@ class MessageGenerator {
 
         // Улучшаем текст с помощью Gemini
         try {
-            result = await this.gemini.improveText(result);
+            result = await this.ai.improveText(result);
         } catch (error) {
             console.error('Error improving text:', error);
         }
@@ -337,7 +337,7 @@ class MessageGenerator {
             if (!basePhrase) return "Гусь молчит...";
 
             // Генерируем ответ
-            return await this.gemini.generateContinuation(
+            return await this.ai.generateContinuation(
                 basePhrase,
                 context,
                 message.text,
@@ -527,7 +527,7 @@ class MessageGenerator {
         
         // Генерируем продолжение через Gemini
         const useSwears = Math.random() < config.SWEAR_CHANCE / 100;
-        const continuation = await this.gemini.generateContinuation(
+        const continuation = await this.ai.generateContinuation(
             baseText,
             inputText,
             useSwears

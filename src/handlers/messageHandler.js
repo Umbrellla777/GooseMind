@@ -54,6 +54,10 @@ class MessageHandler {
                 return null;
             }
 
+            // Получаем последние 50 сообщений для контекста
+            const recentMessages = await this.messageGenerator.getRecentMessages(message.chat.id, 50);
+            const context = recentMessages.join('\n');
+
             if (Math.random() * 100 >= config.REACTION_PROBABILITY) {
                 return null;
             }

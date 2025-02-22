@@ -7,8 +7,6 @@ const config = require('../config');
 class MessageGenerator {
     constructor(supabase) {
         this.supabase = supabase;
-        this.minWords = 1;
-        this.maxWords = 40;
         
         // Для работы с русским языком
         this.tokenizer = new natural.WordTokenizer();
@@ -19,9 +17,9 @@ class MessageGenerator {
         this.lastCacheUpdate = null;
         this.CACHE_LIFETIME = 5 * 60 * 1000; // 5 минут
         
-        // Добавляем историю контекста
-        this.contextHistory = new Map(); // chatId -> последние сообщения
-        this.MAX_CONTEXT_LENGTH = 50; // Хранить последние 5 сообщений для контекста
+        // Увеличиваем историю контекста
+        this.MAX_CONTEXT_LENGTH = 50;
+        this.contextHistory = new Map();
         
         this.gemini = new GeminiService();
     }
@@ -464,7 +462,7 @@ class MessageGenerator {
         }
     }
 
-    async getRecentMessages(chatId, limit = 10) {
+    async getRecentMessages(chatId, limit = 50) {
         try {
             const { data: messages } = await this.supabase
                 .from('messages')

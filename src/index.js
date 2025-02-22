@@ -26,6 +26,7 @@ const gemini = new GeminiService();
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
 let awaitingSwearProbability = false;
+let awaitingKarma = false;
 
 // Добавим обработку разрыва соединения
 let isConnected = true;
@@ -90,6 +91,16 @@ async function handleCallback(ctx, action) {
                     '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
                     'Например: 15 - реакция на 15% сообщений\n' +
                     'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
+                );
+                break;
+
+            case 'set_karma':
+                awaitingKarma = true;
+                await ctx.answerCbQuery('Введите новое значение кармы');
+                await ctx.reply(
+                    '🎭 Введите новое значение кармы (от -1000 до 1000).\n' +
+                    'Например: -500 для агрессивного гуся\n' +
+                    'Текущее значение: ' + await messageHandler.getCurrentKarma(ctx.chat.id)
                 );
                 break;
 
@@ -206,12 +217,7 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '😇 Мирный', callback_data: 'character_peaceful' },
-                        { text: '😏 Обычный', callback_data: 'character_normal' },
-                    ],
-                    [
-                        { text: '😈 Саркастичный', callback_data: 'character_sarcastic' },
-                        { text: '👿 Агрессивный', callback_data: 'character_aggressive' }
+                        { text: '🎭 Установить карму', callback_data: 'set_karma' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -223,7 +229,7 @@ bot.on('text', async (ctx) => {
                 `Текущие настройки Полумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Характер: ${config.CHARACTER_SETTINGS[config.CHARACTER_TYPE].name}`,
+                `Текущая карма: ${await messageHandler.getCurrentKarma(ctx.chat.id)}`,
                 { reply_markup: keyboard }
             );
             return;
@@ -269,6 +275,19 @@ bot.on('text', async (ctx) => {
                 await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
                 return;
             }
+        }
+
+        // В обработчике сообщений
+        if (awaitingKarma) {
+            awaitingKarma = false;
+            const karma = parseInt(ctx.message.text);
+            if (!isNaN(karma) && karma >= -1000 && karma <= 1000) {
+                await messageHandler.setKarma(ctx.chat.id, karma);
+                await ctx.reply(`✅ Карма установлена на ${karma}`);
+            } else {
+                await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
+            }
+            return;
         }
 
         // Сохраняем сообщение
@@ -355,10 +374,7 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопок с быстрым ответом
 bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
 bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('character_peaceful', ctx => handleCallback(ctx, 'character_peaceful'));
-bot.action('character_normal', ctx => handleCallback(ctx, 'character_normal'));
-bot.action('character_sarcastic', ctx => handleCallback(ctx, 'character_sarcastic'));
-bot.action('character_aggressive', ctx => handleCallback(ctx, 'character_aggressive'));
+bot.action('set_karma', ctx => handleCallback(ctx, 'set_karma'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
 // И добавим обработку ошибок

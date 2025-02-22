@@ -94,6 +94,22 @@ class MessageHandler {
             return null;
         }
     }
+
+    async getCurrentKarma(chatId) {
+        const { data } = await this.supabase
+            .from('chat_karma')
+            .select('karma')
+            .eq('chat_id', chatId)
+            .single();
+        return data?.karma || 0;
+    }
+
+    async setKarma(chatId, karma) {
+        await this.supabase
+            .from('chat_karma')
+            .upsert({ chat_id: chatId, karma: karma });
+        return karma;
+    }
 }
 
 module.exports = { MessageHandler }; 

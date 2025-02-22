@@ -131,39 +131,38 @@ bot.on('message_reaction', async (ctx) => {
         const reaction = ctx.update.message_reaction;
         if (!reaction) return;
 
-        // Сначала получаем информацию о сообщении
-        try {
-            const message = await ctx.telegram.getMessage(
-                reaction.chat.id,
-                reaction.message_id
-            );
-            
-            console.log('Информация о сообщении:', message);
+        // Проверяем, что это реакция 💩
+        const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
+        
+        if (isPoopReaction) {
+            try {
+                // Получаем сообщение через getMessages
+                const message = await ctx.telegram.getMessages(reaction.chat.id, [reaction.message_id]);
+                
+                // Проверяем, что это сообщение бота
+                if (message && message[0]?.from?.id === ctx.botInfo.id) {
+                    const username = reaction.user?.username;
+                    if (username) {
+                        const response = POOP_REACTION_RESPONSES[
+                            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
+                        ].replace('@user', '@' + username);
 
-            // Проверяем, что это реакция 💩 на сообщение бота
-            const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
-            const isBotMessage = message.from.id === ctx.botInfo.id;
-
-            console.log('Проверка реакции:', {
-                isPoopReaction,
-                isBotMessage,
-                messageFromId: message.from.id,
-                botId: ctx.botInfo.id
-            });
-
-            if (isPoopReaction && isBotMessage) {
+                        console.log('Отправляем ответ:', response);
+                        await ctx.reply(response);
+                    }
+                }
+            } catch (error) {
+                // Если не удалось получить сообщение, просто отвечаем
                 const username = reaction.user?.username;
                 if (username) {
                     const response = POOP_REACTION_RESPONSES[
                         Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
                     ].replace('@user', '@' + username);
 
-                    console.log('Отправляем ответ:', response);
+                    console.log('Отправляем ответ без проверки сообщения:', response);
                     await ctx.reply(response);
                 }
             }
-        } catch (error) {
-            console.error('Ошибка получения информации о сообщении:', error);
         }
     } catch (error) {
         console.error('Ошибка обработки реакции:', error);

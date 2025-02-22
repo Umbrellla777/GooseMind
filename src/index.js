@@ -352,18 +352,20 @@ bot.on(['message_reaction', 'message_reaction_count'], async (ctx) => {
         }
 
         // Проверяем, что это реакция на сообщение бота
-        if (reaction.message?.from?.id !== ctx.botInfo.id) {
+        const botUsername = 'GooseMind_bot';
+        console.log('Сообщение от:', reaction.message?.from?.username);
+        
+        if (reaction.message?.from?.username !== botUsername) {
             console.log('Реакция не на сообщение бота');
             return;
         }
 
         // Проверяем наличие реакции 💩
-        const hasPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩') ||
-                               reaction.reaction?.some(r => r.emoji === '💩');
-
-        console.log('Найдена реакция 💩:', hasPoopReaction);
+        const hasPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
+        console.log('Проверка реакции 💩:', hasPoopReaction);
 
         if (!hasPoopReaction) {
+            console.log('Нет реакции 💩');
             return;
         }
 
@@ -379,15 +381,19 @@ bot.on(['message_reaction', 'message_reaction_count'], async (ctx) => {
             Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
         ].replace('@user', '@' + user.username);
 
+        console.log('Отправляем ответ:', response);
+        console.log('В чат:', reaction.chat.id);
+
         await ctx.telegram.sendMessage(
-            reaction.chat_id,
+            reaction.chat.id,
             response
         );
 
-        console.log('Ответ отправлен:', response);
+        console.log('Ответ успешно отправлен');
 
     } catch (error) {
         console.error('Ошибка обработки реакции:', error);
+        console.error('Полный стек ошибки:', error.stack);
     }
 });
 

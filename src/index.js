@@ -29,6 +29,9 @@ let awaitingProbability = false;
 let awaitingReactionProbability = false;
 let awaitingSwearProbability = false;
 
+// Добавляем состояние ожидания ввода кармы
+let awaitingKarma = false;
+
 // Добавим обработку разрыва соединения
 let isConnected = true;
 const reconnectInterval = 5000; // 5 секунд между попытками
@@ -99,6 +102,24 @@ async function handleCallback(ctx, action) {
                 await ctx.answerCbQuery('Очистка базы данных...');
                 await messageHandler.clearDatabase();
                 await ctx.reply('✅ База данных успешно очищена!');
+                break;
+
+            case 'set_karma':
+                awaitingKarma = true;
+                await ctx.answerCbQuery('Введите новое значение кармы');
+                const currentKarma = await karmaService.initKarma(ctx.chat.id);
+                await ctx.reply(
+                    '🔮 Введите новое значение кармы (от -1000 до 1000).\n' +
+                    'Например: 500 - сделает гуся добрым\n' +
+                    '-500 - сделает гуся агрессивным\n' +
+                    `Текущее значение: ${currentKarma}\n\n` +
+                    'Уровни кармы:\n' +
+                    '900 до 1000 - Святой\n' +
+                    '500 до 900 - Добрый\n' +
+                    '0 до 500 - Нормальный\n' +
+                    '-500 до 0 - Токсичный\n' +
+                    '-1000 до -500 - Агрессивный'
+                );
                 break;
 
             default:
@@ -268,6 +289,27 @@ bot.on('text', async (ctx) => {
             }
         }
 
+        // Проверяем ожидание ввода кармы
+        if (awaitingKarma && ctx.from.username.toLowerCase() === 'umbrellla777') {
+            awaitingKarma = false;
+            const newKarma = parseInt(ctx.message.text);
+            
+            if (isNaN(newKarma) || newKarma < config.KARMA.MIN || newKarma > config.KARMA.MAX) {
+                await ctx.reply(
+                    '❌ Ошибка: введите число от -1000 до 1000'
+                );
+                return;
+            }
+
+            await karmaService.setKarma(ctx.chat.id, newKarma);
+            const characterType = karmaService.getCharacterType(newKarma);
+            await ctx.reply(
+                `✅ Карма установлена на ${newKarma}\n` +
+                karmaService.getKarmaDescription(newKarma)
+            );
+            return;
+        }
+
         // Сохраняем сообщение
         try {
             const result = await messageGenerator.saveMessage(ctx.message);
@@ -287,10 +329,12 @@ bot.on('text', async (ctx) => {
                             messageHandler.isBotMentioned(ctx.message.text) || 
                             Math.random() * 100 < config.RESPONSE_PROBABILITY;
 
-        console.log(`Проверка ответа:`, {
+        console.log('Проверка ответа:', {
+            chatId: ctx.chat.id,
             isReplyToBot,
             isMentioned: messageHandler.isBotMentioned(ctx.message.text),
             probability: config.RESPONSE_PROBABILITY,
+            random: Math.random() * 100,
             shouldRespond
         });
 
@@ -325,7 +369,16 @@ bot.on('text', async (ctx) => {
             }
         } else {
             // Проверяем на реакцию
-            if (Math.random() * 100 < config.REACTION_PROBABILITY) {
+            const shouldReact = Math.random() * 100 < config.REACTION_PROBABILITY;
+            
+            console.log('Проверка реакции:', {
+                chatId: ctx.chat.id,
+                probability: config.REACTION_PROBABILITY,
+                random: Math.random() * 100,
+                shouldReact
+            });
+
+            if (shouldReact) {
                 const reactions = await messageHandler.analyzeForReaction(ctx.message);
                 if (reactions && reactions.length > 0) {
                     try {
@@ -361,6 +414,7 @@ bot.action('character_normal', ctx => handleCallback(ctx, 'character_normal'));
 bot.action('character_sarcastic', ctx => handleCallback(ctx, 'character_sarcastic'));
 bot.action('character_aggressive', ctx => handleCallback(ctx, 'character_aggressive'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
+bot.action('set_karma', ctx => handleCallback(ctx, 'set_karma'));
 
 // И добавим обработку ошибок
 bot.catch((err, ctx) => {
@@ -380,12 +434,17 @@ bot.catch((err, ctx) => {
 // Запуск бота с обработкой ошибок
 async function startBot() {
     try {
-        // Удаляем вебхук и старые обновления
-        await bot.telegram.deleteWebhook({ 
+        console.log('Запуск бота...');
+        
+        // Принудительно удаляем вебхук перед запуском
+        await bot.telegram.deleteWebhook({
             drop_pending_updates: true 
         });
 
-        // Явно указываем все типы обновлений
+        // Добавляем задержку перед запуском
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        console.log('Запускаем polling...');
         await bot.launch({
             dropPendingUpdates: true,
             allowedUpdates: [
@@ -397,15 +456,22 @@ async function startBot() {
             ]
         });
 
-        console.log('Бот запущен и слушает реакции');
+        console.log('Бот успешно запущен');
     } catch (error) {
         console.error('Ошибка запуска:', error);
+        
+        if (error.code === 409) {
+            console.log('Обнаружен конфликт, пробуем перезапуск через 10 секунд...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            return startBot();
+        }
+        
         isConnected = false;
         setTimeout(startBot, reconnectInterval * 2);
     }
 }
 
-// Graceful shutdown
+// Добавляем обработку остановки
 process.once('SIGINT', () => {
     console.log('SIGINT received, shutting down...');
     bot.stop('SIGINT');
@@ -414,6 +480,15 @@ process.once('SIGINT', () => {
 process.once('SIGTERM', () => {
     console.log('SIGTERM received, shutting down...');
     bot.stop('SIGTERM');
+});
+
+// Добавляем обработку необработанных ошибок
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
 });
 
 // Запускаем бота

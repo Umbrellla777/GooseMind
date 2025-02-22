@@ -158,6 +158,21 @@ class KarmaService {
 
         return karmaChange;
     }
+
+    async setKarma(chatId, karma) {
+        // Проверяем границы
+        karma = Math.max(config.KARMA.MIN, Math.min(config.KARMA.MAX, karma));
+        
+        // Сохраняем новую карму
+        await this.supabase
+            .from('chat_karma')
+            .upsert({ chat_id: chatId, karma: karma });
+        
+        // Обновляем кэш
+        this.karmaCache.set(chatId, karma);
+        
+        return karma;
+    }
 }
 
 module.exports = { KarmaService }; 

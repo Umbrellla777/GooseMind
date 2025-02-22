@@ -278,6 +278,30 @@ bot.catch((err, ctx) => {
     }
 });
 
+// Перемещаем обработчик реакций ПЕРЕД запуском бота
+bot.on('message_reaction', async (ctx) => {
+    try {
+        const reaction = ctx.update.message_reaction;
+        console.log('=== ПОЛУЧЕНА РЕАКЦИЯ ===', JSON.stringify(reaction, null, 2));
+
+        // Проверяем реакцию 💩 и что это сообщение бота
+        if (reaction?.new_reaction?.some(r => r.emoji === '💩') && 
+            reaction.message?.from?.id === ctx.botInfo.id) {
+            
+            const username = reaction.user?.username;
+            if (username) {
+                const response = POOP_REACTION_RESPONSES[
+                    Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
+                ].replace('@user', '@' + username);
+
+                await ctx.reply(response);
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка обработки реакции:', error);
+    }
+});
+
 // Запуск бота с обработкой ошибок
 async function startBot() {
     try {
@@ -344,46 +368,6 @@ const POOP_REACTION_RESPONSES = [
     "@user, твоя «какаха» это как твой уровень интеллекта.",
     "@user, твоя «какаха» это как попытка выразить себя, но получилось как всегда."
 ];
-
-// Обработчик реакций (перемещаем выше)
-bot.on('message_reaction', async (ctx) => {
-    try {
-        console.log('=== ПОЛУЧЕНА РЕАКЦИЯ ===');
-        
-        // Получаем данные о реакции
-        const reaction = ctx.update.message_reaction;
-        console.log('Данные реакции:', reaction);
-
-        // Быстрая проверка на реакцию 💩
-        if (!reaction?.new_reaction?.some(r => r.emoji === '💩')) {
-            return;
-        }
-
-        // Проверяем, что это реакция на сообщение бота
-        if (reaction.message?.from?.username !== 'GooseMind_bot') {
-            return;
-        }
-
-        // Получаем username пользователя
-        const username = reaction.user?.username;
-        if (!username) {
-            return;
-        }
-
-        // Сразу отправляем ответ
-        const response = POOP_REACTION_RESPONSES[
-            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-        ].replace('@user', '@' + username);
-
-        await ctx.telegram.sendMessage(
-            reaction.chat.id,
-            response
-        );
-
-    } catch (error) {
-        console.error('Ошибка обработки реакции:', error);
-    }
-});
 
 // Запускаем бота
 startBot();

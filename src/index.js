@@ -133,22 +133,41 @@ bot.on('message_reaction', async (ctx) => {
         
         if (isPoopReaction) {
             try {
-                // Получаем информацию о сообщении через API
-                const result = await ctx.telegram.callApi('getChat', {
-                    chat_id: reaction.chat.id
+                // Получаем ID нашего бота
+                const botInfo = await ctx.telegram.getMe();
+                
+                // Пробуем получить сообщение через API
+                const message = await ctx.telegram.callApi('getMessage', {
+                    chat_id: reaction.chat.id,
+                    message_id: reaction.message_id
+                }).catch(async () => {
+                    // Если не получилось, пробуем через forwardMessage
+                    try {
+                        const forwardedMsg = await ctx.telegram.forwardMessage(
+                            reaction.chat.id,
+                            reaction.chat.id,
+                            reaction.message_id,
+                            { disable_notification: true }
+                        );
+                        // Удаляем пересланное сообщение
+                        await ctx.telegram.deleteMessage(reaction.chat.id, forwardedMsg.message_id);
+                        return forwardedMsg;
+                    } catch (e) {
+                        console.error('Ошибка при пересылке:', e);
+                        return null;
+                    }
                 });
 
-                console.log('Информация о чате:', result);
+                console.log('Полученное сообщение:', message);
 
-                // Проверяем, что это сообщение от бота
-                const botInfo = await ctx.telegram.getMe();
-                const isBotMessage = reaction.message?.from?.id === botInfo.id;
+                // Проверяем, что сообщение от нашего бота
+                const isBotMessage = message?.from?.id === botInfo.id;
 
                 console.log('Проверка сообщения:', {
                     messageId: reaction.message_id,
                     isBotMessage: isBotMessage,
-                    botId: botInfo.id,
-                    messageFromId: reaction.message?.from?.id
+                    messageFromId: message?.from?.id,
+                    botId: botInfo.id
                 });
 
                 if (isBotMessage) {

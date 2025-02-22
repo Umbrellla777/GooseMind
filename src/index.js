@@ -215,32 +215,36 @@ bot.on('text', async (ctx) => {
 
         if (shouldRespond) {
             console.log('Генерируем ответ...');
+            
+            // Отправляем "печатает" перед генерацией текста
+            await ctx.telegram.sendChatAction(ctx.message.chat.id, 'typing');
+            
             const response = await messageGenerator.generateResponse(ctx.message);
+            
+            // Если ответ не пустой и не заглушка - отправляем
             if (response && response !== "Гусь молчит...") {
                 await ctx.reply(response);
             } else {
                 console.log('Пустой ответ от генератора');
             }
         } else {
-            console.log('Пропускаем сообщение по вероятности');
-        }
-
-        // Анализируем сообщение для реакции
-        if (Math.random() * 100 < config.REACTION_PROBABILITY) {
-            const reactions = await messageHandler.analyzeForReaction(ctx.message);
-            if (reactions && reactions.length > 0) {
-                try {
-                    await ctx.telegram.callApi('setMessageReaction', {
-                        chat_id: ctx.message.chat.id,
-                        message_id: ctx.message.message_id,
-                        reaction: reactions.map(emoji => ({
-                            type: 'emoji',
-                            emoji: emoji
-                        })),
-                        is_big: Math.random() < 0.2 // 20% шанс на большую реакцию
-                    });
-                } catch (error) {
-                    console.error('Reaction error:', error);
+            // Проверяем на реакцию
+            if (Math.random() * 100 < config.REACTION_PROBABILITY) {
+                const reactions = await messageHandler.analyzeForReaction(ctx.message);
+                if (reactions && reactions.length > 0) {
+                    try {
+                        await ctx.telegram.callApi('setMessageReaction', {
+                            chat_id: ctx.message.chat.id,
+                            message_id: ctx.message.message_id,
+                            reaction: reactions.map(emoji => ({
+                                type: 'emoji',
+                                emoji: emoji
+                            })),
+                            is_big: Math.random() < 0.2
+                        });
+                    } catch (error) {
+                        console.error('Reaction error:', error);
+                    }
                 }
             }
         }

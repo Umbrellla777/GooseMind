@@ -303,8 +303,8 @@ class MessageGenerator {
                 }
             }
 
-            // Выбираем 5 случайных фраз
-            const phraseCount = 5;
+            // Выбираем 10 случайных фраз
+            const phraseCount = 10;
             const selectedPhrases = [];
 
             // Перемешиваем массив фраз

@@ -1,123 +1,132 @@
-const CharacterAI = require('node_characterai');
+const axios = require('axios');
 const config = require('../config');
 
 class CharacterAIService {
     constructor() {
-        this.characterAI = new CharacterAI();
-        this.chat = null;
-        this.initialize();
+        this.baseUrl = 'https://character.ai';
+        this.token = config.CHARACTER_AI.TOKEN;
+        this.characterId = config.CHARACTER_AI.CHARACTER_ID;
+        this.chatId = null;
         
-        // Проверяем токен каждый день
-        setInterval(() => this.checkToken(), 24 * 60 * 60 * 1000);
+        this.client = axios.create({
+            baseURL: this.baseUrl,
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Authorization': `Token ${this.token}`,
+                'Cookie': `web-next-auth=${this.token}`,
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://character.ai/',
+                'Origin': 'https://character.ai'
+            }
+        });
+
+        this.initialize();
     }
 
     async initialize() {
         try {
-            await this.characterAI.authenticateWithToken(config.CHARACTER_AI.TOKEN);
-            
-            // Создаем чат
-            this.chat = await this.characterAI.createOrContinueChat(
-                config.CHARACTER_AI.CHARACTER_ID
-            );
+            // Получаем информацию о персонаже
+            const characterInfo = await this.getCharacterInfo();
+            console.log('Character info loaded:', characterInfo.name);
 
-            console.log('CharacterAI initialized successfully');
-            await this.checkToken(); // Проверяем токен при запуске
+            // Создаем новый чат или получаем существующий
+            const chatInfo = await this.createOrGetChat();
+            this.chatId = chatInfo.external_id;
+            console.log('Chat initialized:', this.chatId);
+
+            // Устанавливаем базовый промпт
+            await this.setBasePrompt();
         } catch (error) {
-            if (error.message.includes('token expired')) {
-                console.error('Token expired, switching to guest mode');
-                await this.initializeAsGuest();
-            } else {
-                console.error('CharacterAI init error:', error);
-                await this.initializeAsGuest();
-            }
+            console.error('CharacterAI init error:', error);
+            setTimeout(() => this.initialize(), 5000);
         }
     }
 
-    async checkToken() {
+    async getCharacterInfo() {
         try {
-            const token = config.CHARACTER_AI.TOKEN;
-            if (!token) return;
-
-            // Декодируем JWT токен
-            const [header, payload, signature] = token.split('.');
-            const decodedPayload = JSON.parse(Buffer.from(payload, 'base64').toString());
-
-            // Получаем время истечения токена
-            const expirationDate = new Date(decodedPayload.exp * 1000);
-            const now = new Date();
-            const daysUntilExpiration = Math.floor((expirationDate - now) / (1000 * 60 * 60 * 24));
-
-            if (daysUntilExpiration <= 3) {
-                console.warn(`⚠️ ВНИМАНИЕ: Токен Character AI истекает через ${daysUntilExpiration} дней!`);
-                // Можно добавить отправку уведомления в телеграм
-                if (this.bot) {
-                    await this.bot.telegram.sendMessage(
-                        config.ADMIN_CHAT_ID,
-                        `⚠️ Токен Character AI истекает через ${daysUntilExpiration} дней!\nНеобходимо обновить токен.`
-                    );
-                }
-            }
+            const response = await this.client.get(`/chat/character/info/${this.characterId}/`);
+            return response.data;
         } catch (error) {
-            console.error('Error checking token:', error);
+            console.error('Error fetching character info:', error);
+            throw error;
         }
     }
 
-    async initializeAsGuest() {
+    async createOrGetChat() {
         try {
-            await this.characterAI.authenticateAsGuest();
-            this.chat = await this.characterAI.createOrContinueChat(
-                config.CHARACTER_AI.CHARACTER_ID
-            );
-            console.log('CharacterAI initialized as guest');
+            // Пробуем получить существующий чат
+            const response = await this.client.get(`/chat/history/continue/`, {
+                params: { character_external_id: this.characterId }
+            });
+            return response.data;
         } catch (error) {
-            console.error('Guest auth failed:', error);
+            console.error('Error getting/creating chat:', error);
+            throw error;
+        }
+    }
+
+    async setBasePrompt() {
+        const basePrompt = `Ты полуумный гусь, который общается в телеграм чате. 
+        Ты должен отвечать кратко, с юмором и сарказмом. 
+        Твои ответы должны быть не длиннее 2-3 предложений.
+        Используй эмодзи для выражения эмоций.
+        Твой характер может меняться в зависимости от кармы.`;
+
+        try {
+            await this.client.post('/chat/character/update_greeting/', {
+                character_external_id: this.characterId,
+                greeting: basePrompt
+            });
+        } catch (error) {
+            console.error('Error setting base prompt:', error);
         }
     }
 
     async generateContinuation(basePhrase, context, lastMessage, characterType = 'normal') {
-        // Добавляем случайную задержку 1-3 секунды
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-        const session = await this.getNextSession();
         try {
-            if (!session.chat) {
-                // Создаем чат
-                session.chat = await session.ai.createOrContinueChat(
-                    config.CHARACTER_AI.CHARACTER_ID
-                );
+            if (!this.chatId) {
+                await this.initialize();
             }
 
             const characterSettings = config.CHARACTER_SETTINGS[characterType];
             const karma = parseInt(characterType.match(/-?\d+/)?.[0] || '0');
 
-            // Формируем промпт с учетом характера
             const prompt = `[Характер: ${characterSettings.name}
             Карма: ${karma}
             Особенности: ${characterSettings.traits.join(', ')}]
             
             ${lastMessage}`;
 
-            const response = await session.chat.sendAndAwaitResponse(prompt, true);
+            const response = await this.client.post('/chat/streaming/send/', {
+                history_external_id: this.chatId,
+                text: prompt,
+                tgt: 'internal_id'
+            });
             
-            // Пост-обработка для усиления характера
+            let text = response.data.replies[0].text;
+
             if (karma <= -500) {
-                return this.enhanceNegativeResponse(response.text, karma);
+                text = this.enhanceNegativeResponse(text, karma);
             }
 
-            session.messageCount++;
-            return response.text;
+            return text;
 
         } catch (error) {
             console.error('CharacterAI error:', error);
             
-            // Пробуем переинициализировать при ошибке
-            await this.initializeSessions();
+            if (error.response?.status === 401) {
+                await this.initialize();
+            }
+            
             return "Гусь молчит...";
         }
     }
 
     async improveText(text, characterType = 'normal') {
         try {
-            if (!this.chat) {
+            if (!this.chatId) {
                 await this.initialize();
             }
 
@@ -125,13 +134,19 @@ class CharacterAIService {
             const karma = parseInt(characterType.match(/-?\d+/)?.[0] || '0');
 
             const prompt = `Улучши этот текст, сохраняя смысл: ${text}`;
-            const response = await this.chat.sendAndAwaitResponse(prompt, true);
+            const response = await this.client.post('/chat/streaming/send/', {
+                history_external_id: this.chatId,
+                text: prompt,
+                tgt: 'internal_id'
+            });
+
+            let improvedText = response.data.replies[0].text;
 
             if (karma <= -500) {
-                return this.enhanceNegativeResponse(response.text, karma);
+                improvedText = this.enhanceNegativeResponse(improvedText, karma);
             }
 
-            return response.text;
+            return improvedText;
         } catch (error) {
             console.error('CharacterAI improve error:', error);
             return text;

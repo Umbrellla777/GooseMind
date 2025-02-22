@@ -12,10 +12,7 @@
     "dotenv": "^16.4.1",
     "natural": "^6.2.0",
     "telegraf": "^4.15.3",
-    "node_characterai": "^1.2.7",
-    "puppeteer": "^19.11.1",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "axios": "^1.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

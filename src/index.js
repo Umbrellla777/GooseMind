@@ -52,7 +52,7 @@ function cleanupOldMessages() {
     }
 }
 
-// Оптимизированный обработчик реакций
+// Обработчик реакций
 bot.on('message_reaction', async (ctx) => {
     const reaction = ctx.update.message_reaction;
     if (!reaction?.new_reaction?.some(r => r.emoji === '💩')) return;
@@ -80,7 +80,7 @@ bot.on('message_reaction', async (ctx) => {
     }
 });
 
-// Оптимизированный обработчик сообщений
+// Обработчик текстовых сообщений
 bot.on('text', async (ctx) => {
     try {
         // Пропускаем сообщения от ботов

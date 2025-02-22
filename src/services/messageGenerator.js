@@ -303,11 +303,11 @@ class MessageGenerator {
                 }
             }
 
-            // Выбираем 2-3 случайные фразы
-            const phraseCount = Math.floor(Math.random() * 2) + 2; // 2-3 фразы
+            // Выбираем 5 случайных фраз
+            const phraseCount = 5;
             const selectedPhrases = [];
 
-            // Перемешиваем массив фраз для случайного выбора
+            // Перемешиваем массив фраз
             for (let i = allPhrases.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [allPhrases[i], allPhrases[j]] = [allPhrases[j], allPhrases[i]];

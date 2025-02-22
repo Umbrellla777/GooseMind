@@ -29,6 +29,9 @@ let awaitingSwearProbability = false;
 let isConnected = true;
 const reconnectInterval = 5000; // 5 секунд между попытками
 
+// В начале файла после создания бота
+const botMessages = new Set(); // Хранилище ID сообщений бота
+
 async function reconnect() {
     try {
         if (!isConnected) {
@@ -131,22 +134,16 @@ bot.on('message_reaction', async (ctx) => {
         // Проверяем, что это реакция 💩
         const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
         
-        // Получаем информацию о сообщении
-        const messageInfo = {
-            chat_id: reaction.chat.id,
-            message_id: reaction.message_id,
-            from: reaction.message?.from || {}
-        };
-
         console.log('Данные реакции:', {
             isPoopReaction,
-            botUsername: 'GooseMind_bot',
-            messageFromUsername: messageInfo.from.username,
+            messageId: reaction.message_id,
+            chatId: reaction.chat.id,
+            isBotMessage: botMessages.has(`${reaction.chat.id}:${reaction.message_id}`),
             reactionFromUsername: reaction.user?.username
         });
 
         // Проверяем, что это реакция 💩 на сообщение бота
-        if (isPoopReaction && messageInfo.from.username === 'GooseMind_bot') {
+        if (isPoopReaction && botMessages.has(`${reaction.chat.id}:${reaction.message_id}`)) {
             const username = reaction.user?.username;
             if (username) {
                 const response = POOP_REACTION_RESPONSES[
@@ -282,7 +279,15 @@ bot.on('text', async (ctx) => {
             
             // Если ответ не пустой и не заглушка - отправляем
             if (response && response !== "Гусь молчит...") {
-                await ctx.reply(response);
+                const sentMessage = await ctx.reply(response);
+                // Сохраняем ID сообщения бота
+                botMessages.add(`${ctx.chat.id}:${sentMessage.message_id}`);
+                
+                // Ограничиваем размер хранилища
+                if (botMessages.size > 1000) {
+                    const oldestMessage = Array.from(botMessages)[0];
+                    botMessages.delete(oldestMessage);
+                }
             } else {
                 console.log('Пустой ответ от генератора');
             }

@@ -21,7 +21,7 @@ class MessageGenerator {
         
         // Добавляем историю контекста
         this.contextHistory = new Map(); // chatId -> последние сообщения
-        this.MAX_CONTEXT_LENGTH = 5; // Хранить последние 5 сообщений для контекста
+        this.MAX_CONTEXT_LENGTH = 50; // Хранить последние 5 сообщений для контекста
         
         this.gemini = new GeminiService();
     }

@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
+const { KarmaService } = require('./services/karmaService');
 
 // Настройки для бота
 const botOptions = {
@@ -19,6 +20,9 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
 const messageGenerator = new MessageGenerator(supabase);
+
+// Создаем экземпляр
+const karmaService = new KarmaService(supabase);
 
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
@@ -295,13 +299,17 @@ bot.on('text', async (ctx) => {
             shouldRespond
         });
 
+        // Обновляем карму и получаем характер
+        const karma = await karmaService.updateKarma(ctx.chat.id, ctx.message, ctx);
+        const characterType = karmaService.getCharacterType(karma);
+
         if (shouldRespond) {
             console.log('Генерируем ответ...');
             
             // Отправляем "печатает" перед генерацией текста
             await ctx.telegram.sendChatAction(ctx.message.chat.id, 'typing');
             
-            const response = await messageGenerator.generateResponse(ctx.message);
+            const response = await messageGenerator.generateResponse(ctx.message, characterType);
             
             // Если ответ не пустой и не заглушка - отправляем
             if (response && response !== "Гусь молчит...") {

@@ -136,32 +136,37 @@ bot.on('message_reaction', async (ctx) => {
         
         if (isPoopReaction) {
             try {
-                // Получаем сообщение через getMessages
-                const message = await ctx.telegram.getMessages(reaction.chat.id, [reaction.message_id]);
+                // Получаем сообщение через getChatMessage
+                const message = await ctx.telegram.getChatMessage(
+                    reaction.chat.id,
+                    reaction.message_id
+                );
                 
-                // Проверяем, что это сообщение бота
-                if (message && message[0]?.from?.id === ctx.botInfo.id) {
+                console.log('Сообщение:', message);
+                
+                // Проверяем, что это сообщение от нашего бота
+                const isBotMessage = message?.from?.username === 'GooseMind_bot';
+                
+                console.log('Проверка сообщения:', {
+                    isBotMessage,
+                    messageFromUsername: message?.from?.username
+                });
+
+                if (isBotMessage) {
                     const username = reaction.user?.username;
                     if (username) {
                         const response = POOP_REACTION_RESPONSES[
                             Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
                         ].replace('@user', '@' + username);
 
-                        console.log('Отправляем ответ:', response);
+                        console.log('Отправляем ответ на реакцию к сообщению бота:', response);
                         await ctx.reply(response);
                     }
+                } else {
+                    console.log('Реакция поставлена не на сообщение бота');
                 }
             } catch (error) {
-                // Если не удалось получить сообщение, просто отвечаем
-                const username = reaction.user?.username;
-                if (username) {
-                    const response = POOP_REACTION_RESPONSES[
-                        Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-                    ].replace('@user', '@' + username);
-
-                    console.log('Отправляем ответ без проверки сообщения:', response);
-                    await ctx.reply(response);
-                }
+                console.error('Ошибка при проверке сообщения:', error);
             }
         }
     } catch (error) {

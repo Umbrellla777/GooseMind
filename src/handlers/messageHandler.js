@@ -6,7 +6,8 @@ const REACTIONS = [
     '👍', '❤️', '🔥', '🥰', '👏',
     '🤔', '🤯', '😱', '🤬', '😢',
     '🎉', '🤩', '🤮', '💩', '🙏',
-    '👎', '❤️‍🔥', '🤨', '🖕'
+    '👎', '❤️‍🔥', '🤨', '🖕', 
+    '💩', '💩', '💩'  // Увеличиваем шанс на 💩, добавляя его несколько раз
 ];
 
 class MessageHandler {
@@ -59,22 +60,11 @@ class MessageHandler {
                 return null;
             }
 
-            // Всегда ставим одну случайную реакцию
-            const reactions = [
-                REACTIONS[Math.floor(Math.random() * REACTIONS.length)]
-            ];
+            // Выбираем одну случайную реакцию
+            const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
+            console.log('Выбрана реакция:', reaction); // Добавляем лог для отладки
+            return [reaction];
 
-            // В 30% случаев добавляем вторую реакцию
-            const SECOND_REACTION_CHANCE = 30; // 30%
-            if (Math.random() * 100 < SECOND_REACTION_CHANCE) {
-                let secondReaction;
-                do {
-                    secondReaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
-                } while (secondReaction === reactions[0]); // Избегаем повторений
-                reactions.push(secondReaction);
-            }
-
-            return reactions;
         } catch (error) {
             console.error('Error analyzing for reaction:', error);
             return null;

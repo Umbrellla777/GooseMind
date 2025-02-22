@@ -333,4 +333,17 @@ module.exports = {
         MAX_TOKENS: 100,
         TEMPERATURE: 0.8
     },
+    CHARACTER_AI: {
+        CHARACTER_ID: process.env.CHARACTER_AI_ID,
+        TOKEN: process.env.CHARACTER_AI_TOKEN,
+        SETTINGS: {
+            MODEL: process.env.CHARACTER_AI_MODEL || 'claude',
+            LANGUAGE: process.env.CHARACTER_AI_LANGUAGE || 'russian',
+            NSFW: process.env.CHARACTER_AI_NSFW === 'true',
+            RANDOMNESS: parseFloat(process.env.CHARACTER_AI_RANDOMNESS) || 0.8,
+            RESPONSE_LENGTH: process.env.CHARACTER_AI_RESPONSE_LENGTH || 'short'
+        },
+        MAX_RETRIES: 3,
+        TIMEOUT: 30000
+    },
 }; 

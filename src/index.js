@@ -3,7 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
-const { GeminiService } = require('./services/geminiService');
+const { CharacterAIService } = require('./services/characterAIService');
 
 // Настройки для бота
 const botOptions = {
@@ -20,7 +20,7 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
 const messageGenerator = new MessageGenerator(supabase);
-const gemini = new GeminiService();
+const characterAI = new CharacterAIService();
 
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;

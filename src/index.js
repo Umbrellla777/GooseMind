@@ -3,7 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
-const { GeminiService } = require('./services/geminiService');
 
 // Настройки для бота
 const botOptions = {
@@ -20,13 +19,11 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
 const messageGenerator = new MessageGenerator(supabase);
-const gemini = new GeminiService();
 
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
 let awaitingSwearProbability = false;
-let awaitingKarma = false;
 
 // Добавим обработку разрыва соединения
 let isConnected = true;
@@ -55,21 +52,9 @@ async function reconnect() {
 // Добавляем функцию handleCallback перед регистрацией обработчиков
 async function handleCallback(ctx, action) {
     try {
+        // Проверяем доступ
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
             await ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
-            return;
-        }
-
-        if (action.startsWith('character_')) {
-            const characterType = action.replace('character_', '');
-            if (config.CHARACTER_SETTINGS[characterType]) {
-                config.CHARACTER_TYPE = characterType;
-                await ctx.answerCbQuery(`Характер изменен на "${config.CHARACTER_SETTINGS[characterType].name}"`);
-                await ctx.reply(
-                    `✅ Характер гуся изменен на "${config.CHARACTER_SETTINGS[characterType].name}"\n` +
-                    `Особенности:\n${config.CHARACTER_SETTINGS[characterType].traits.map(t => `• ${t}`).join('\n')}`
-                );
-            }
             return;
         }
 
@@ -94,13 +79,14 @@ async function handleCallback(ctx, action) {
                 );
                 break;
 
-            case 'set_karma':
-                awaitingKarma = true;
-                await ctx.answerCbQuery('Введите новое значение кармы');
+            case 'toggle_swears':
+                awaitingSwearProbability = true;
+                await ctx.answerCbQuery('Введите вероятность матов');
                 await ctx.reply(
-                    '🎭 Введите новое значение кармы (от -1000 до 1000).\n' +
-                    'Например: -500 для агрессивного гуся\n' +
-                    'Текущее значение: ' + await messageHandler.getCurrentKarma(ctx.chat.id)
+                    '🤬 Введите вероятность использования матов (от 0 до 100%).\n' +
+                    'Например: 50 - маты будут в 50% ответов\n' +
+                    '0 - маты отключены\n' +
+                    'Текущее значение: ' + config.SWEAR_PROBABILITY + '%'
                 );
                 break;
 
@@ -210,9 +196,6 @@ bot.on('text', async (ctx) => {
                 return ctx.reply('Только @Umbrellla777 может использовать эту команду');
             }
 
-            const currentKarma = await messageHandler.getCurrentKarma(ctx.chat.id);
-            const currentCharacter = messageHandler.getCharacterByKarma(currentKarma);
-
             const keyboard = {
                 inline_keyboard: [
                     [
@@ -220,7 +203,7 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '🎭 Установить карму', callback_data: 'set_karma' }
+                        { text: '🤬 Частота матов', callback_data: 'toggle_swears' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -229,10 +212,10 @@ bot.on('text', async (ctx) => {
             };
 
             await ctx.reply(
-                `Текущие настройки Полумного Гуся:\n` +
+                `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Текущая карма: ${currentKarma} (${currentCharacter.name})`,
+                `Вероятность матов: ${config.SWEAR_PROBABILITY}%`,
                 { reply_markup: keyboard }
             );
             return;
@@ -278,24 +261,6 @@ bot.on('text', async (ctx) => {
                 await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
                 return;
             }
-        }
-
-        // В обработчике сообщений
-        if (awaitingKarma) {
-            awaitingKarma = false;
-            const karma = parseInt(ctx.message.text);
-            if (!isNaN(karma) && karma >= -1000 && karma <= 1000) {
-                const result = await messageHandler.setKarma(ctx.chat.id, karma);
-                if (result.notify) {
-                    await ctx.reply(result.message);
-                } else {
-                    const character = messageHandler.getCharacterByKarma(karma);
-                    await ctx.reply(`✅ Карма установлена на ${karma} (${character.name})`);
-                }
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
-            }
-            return;
         }
 
         // Сохраняем сообщение
@@ -382,7 +347,7 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопок с быстрым ответом
 bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
 bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('set_karma', ctx => handleCallback(ctx, 'set_karma'));
+bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
 // И добавим обработку ошибок

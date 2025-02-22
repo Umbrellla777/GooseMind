@@ -94,60 +94,6 @@ class MessageHandler {
             return null;
         }
     }
-
-    async getCurrentKarma(chatId) {
-        const { data } = await this.supabase
-            .from('chat_karma')
-            .select('karma')
-            .eq('chat_id', chatId)
-            .single();
-        return data?.karma || 0;
-    }
-
-    async setKarma(chatId, karma) {
-        const oldKarma = await this.getCurrentKarma(chatId);
-        await this.supabase
-            .from('chat_karma')
-            .upsert({ chat_id: chatId, karma: karma });
-
-        // Уведомляем только при изменении сотен
-        const oldHundreds = Math.floor(oldKarma / 100);
-        const newHundreds = Math.floor(karma / 100);
-        
-        if (oldHundreds !== newHundreds) {
-            const change = karma > oldKarma ? 'повысилась' : 'понизилась';
-            const character = this.getCharacterByKarma(karma);
-            return {
-                notify: true,
-                message: `🎭 Карма ${change} до ${karma}!\nТекущий характер: ${character.name}`
-            };
-        }
-        
-        return { notify: false };
-    }
-
-    getCharacterByKarma(karma) {
-        if (karma >= 900) return config.CHARACTER_SETTINGS.divine;
-        if (karma >= 800) return config.CHARACTER_SETTINGS.angelic;
-        if (karma >= 700) return config.CHARACTER_SETTINGS.saint;
-        if (karma >= 600) return config.CHARACTER_SETTINGS.blessed;
-        if (karma >= 500) return config.CHARACTER_SETTINGS.enlightened;
-        if (karma >= 400) return config.CHARACTER_SETTINGS.cheerful;
-        if (karma >= 300) return config.CHARACTER_SETTINGS.friendly;
-        if (karma >= 200) return config.CHARACTER_SETTINGS.peaceful;
-        if (karma >= 100) return config.CHARACTER_SETTINGS.positive;
-        if (karma >= 0) return config.CHARACTER_SETTINGS.normal;
-        if (karma >= -100) return config.CHARACTER_SETTINGS.grumpy;
-        if (karma >= -200) return config.CHARACTER_SETTINGS.sarcastic;
-        if (karma >= -300) return config.CHARACTER_SETTINGS.annoyed;
-        if (karma >= -400) return config.CHARACTER_SETTINGS.irritated;
-        if (karma >= -500) return config.CHARACTER_SETTINGS.angry;
-        if (karma >= -600) return config.CHARACTER_SETTINGS.aggressive;
-        if (karma >= -700) return config.CHARACTER_SETTINGS.furious;
-        if (karma >= -800) return config.CHARACTER_SETTINGS.hostile;
-        if (karma >= -900) return config.CHARACTER_SETTINGS.cruel;
-        return config.CHARACTER_SETTINGS.demonic;
-    }
 }
 
 module.exports = { MessageHandler }; 

@@ -52,9 +52,21 @@ async function reconnect() {
 // Добавляем функцию handleCallback перед регистрацией обработчиков
 async function handleCallback(ctx, action) {
     try {
-        // Проверяем доступ
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
             await ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
+            return;
+        }
+
+        if (action.startsWith('character_')) {
+            const characterType = action.replace('character_', '');
+            if (config.CHARACTER_SETTINGS[characterType]) {
+                config.CHARACTER_TYPE = characterType;
+                await ctx.answerCbQuery(`Характер изменен на "${config.CHARACTER_SETTINGS[characterType].name}"`);
+                await ctx.reply(
+                    `✅ Характер гуся изменен на "${config.CHARACTER_SETTINGS[characterType].name}"\n` +
+                    `Особенности:\n${config.CHARACTER_SETTINGS[characterType].traits.map(t => `• ${t}`).join('\n')}`
+                );
+            }
             return;
         }
 
@@ -76,17 +88,6 @@ async function handleCallback(ctx, action) {
                     '😎 Введите новую вероятность реакций (от 1 до 100%).\n' +
                     'Например: 15 - реакция на 15% сообщений\n' +
                     'Текущее значение: ' + config.REACTION_PROBABILITY + '%'
-                );
-                break;
-
-            case 'toggle_swears':
-                awaitingSwearProbability = true;
-                await ctx.answerCbQuery('Введите вероятность матов');
-                await ctx.reply(
-                    '🤬 Введите вероятность использования матов (от 0 до 100%).\n' +
-                    'Например: 50 - маты будут в 50% ответов\n' +
-                    '0 - маты отключены\n' +
-                    'Текущее значение: ' + config.SWEAR_PROBABILITY + '%'
                 );
                 break;
 
@@ -203,7 +204,12 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '🤬 Частота матов', callback_data: 'toggle_swears' }
+                        { text: '😇 Мирный', callback_data: 'character_peaceful' },
+                        { text: '😏 Обычный', callback_data: 'character_normal' },
+                    ],
+                    [
+                        { text: '😈 Саркастичный', callback_data: 'character_sarcastic' },
+                        { text: '👿 Агрессивный', callback_data: 'character_aggressive' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -212,10 +218,10 @@ bot.on('text', async (ctx) => {
             };
 
             await ctx.reply(
-                `Текущие настройки Полуумного Гуся:\n` +
+                `Текущие настройки Полумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Вероятность матов: ${config.SWEAR_PROBABILITY}%`,
+                `Характер: ${config.CHARACTER_SETTINGS[config.CHARACTER_TYPE].name}`,
                 { reply_markup: keyboard }
             );
             return;
@@ -347,7 +353,10 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопок с быстрым ответом
 bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
 bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
+bot.action('character_peaceful', ctx => handleCallback(ctx, 'character_peaceful'));
+bot.action('character_normal', ctx => handleCallback(ctx, 'character_normal'));
+bot.action('character_sarcastic', ctx => handleCallback(ctx, 'character_sarcastic'));
+bot.action('character_aggressive', ctx => handleCallback(ctx, 'character_aggressive'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
 // И добавим обработку ошибок

@@ -125,8 +125,6 @@ const POOP_REACTION_RESPONSES = [
 // Обработчик реакций ПЕРВЫМ после создания бота
 bot.on('message_reaction', async (ctx) => {
     try {
-        console.log('=== ПОЛУЧЕНА РЕАКЦИЯ ===');
-        
         const reaction = ctx.update.message_reaction;
         if (!reaction) return;
 
@@ -135,29 +133,27 @@ bot.on('message_reaction', async (ctx) => {
         
         if (isPoopReaction) {
             try {
-                // Получаем информацию о сообщении
-                const chatMember = await ctx.telegram.getChatMember(
+                // Получаем сообщение из чата
+                const message = await ctx.telegram.getMessage(
                     reaction.chat.id,
-                    ctx.botInfo.id
-                );
+                    reaction.message_id
+                ).catch(() => null);
 
-                console.log('Информация о боте в чате:', chatMember);
+                // Получаем информацию о сообщении через API
+                const result = await ctx.telegram.callApi('getMessage', {
+                    chat_id: reaction.chat.id,
+                    message_id: reaction.message_id
+                }).catch(() => null);
 
-                // Получаем информацию о сообщении через copyMessage
-                const copiedMessage = await ctx.telegram.copyMessage(
-                    ctx.botInfo.id, // копируем в личку бота
-                    reaction.chat.id,
-                    reaction.message_id,
-                    { disable_notification: true }
-                );
+                console.log('Информация о сообщении:', result);
 
                 // Проверяем, что сообщение от нашего бота
-                const isBotMessage = copiedMessage.from?.id === ctx.botInfo.id;
-                
+                const isBotMessage = result?.from?.username === 'GooseMind_bot';
+
                 console.log('Проверка сообщения:', {
                     messageId: reaction.message_id,
-                    chatId: reaction.chat.id,
-                    isBotMessage: isBotMessage
+                    isBotMessage: isBotMessage,
+                    fromUser: result?.from?.username
                 });
 
                 if (isBotMessage) {
@@ -173,24 +169,8 @@ bot.on('message_reaction', async (ctx) => {
                 } else {
                     console.log('Реакция поставлена не на сообщение бота');
                 }
-
-                // Удаляем скопированное сообщение
-                await ctx.telegram.deleteMessage(ctx.botInfo.id, copiedMessage.message_id);
-
             } catch (error) {
                 console.error('Ошибка при проверке сообщения:', error);
-                
-                // Если произошла ошибка, проверяем по sender_chat
-                const isBotMessage = reaction.message?.sender_chat?.id === ctx.botInfo.id;
-                if (isBotMessage) {
-                    const username = reaction.user?.username;
-                    if (username) {
-                        const response = POOP_REACTION_RESPONSES[
-                            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-                        ].replace('@user', '@' + username);
-                        await ctx.reply(response);
-                    }
-                }
             }
         }
     } catch (error) {

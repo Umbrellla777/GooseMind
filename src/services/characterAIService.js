@@ -1,9 +1,10 @@
 const axios = require('axios');
 const config = require('../config');
+const https = require('https');
 
 class CharacterAIService {
     constructor() {
-        this.baseUrl = 'https://character.ai';
+        this.baseUrl = 'https://beta.character.ai/chat/character';
         this.token = config.CHARACTER_AI.TOKEN;
         this.characterId = config.CHARACTER_AI.CHARACTER_ID;
         this.chatId = null;
@@ -17,9 +18,13 @@ class CharacterAIService {
                 'Cookie': `web-next-auth=${this.token}`,
                 'Accept': 'application/json',
                 'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://character.ai/',
-                'Origin': 'https://character.ai'
-            }
+                'Referer': 'https://beta.character.ai/',
+                'Origin': 'https://beta.character.ai'
+            },
+            httpsAgent: new https.Agent({
+                rejectUnauthorized: false
+            }),
+            proxy: false
         });
 
         this.initialize();
@@ -29,35 +34,35 @@ class CharacterAIService {
         try {
             // Получаем информацию о персонаже
             const characterInfo = await this.getCharacterInfo();
-            console.log('Character info loaded:', characterInfo.name);
+            console.log('Character info loaded:', characterInfo?.name || 'Unknown');
 
             // Создаем новый чат или получаем существующий
             const chatInfo = await this.createOrGetChat();
-            this.chatId = chatInfo.external_id;
+            this.chatId = chatInfo?.external_id;
             console.log('Chat initialized:', this.chatId);
 
             // Устанавливаем базовый промпт
             await this.setBasePrompt();
         } catch (error) {
-            console.error('CharacterAI init error:', error);
+            console.error('CharacterAI init error:', error.message);
             setTimeout(() => this.initialize(), 5000);
         }
     }
 
     async getCharacterInfo() {
         try {
-            const response = await this.client.get(`/chat/character/info/${this.characterId}/`);
+            const response = await this.client.get(`/info/${this.characterId}/`);
             return response.data;
         } catch (error) {
-            console.error('Error fetching character info:', error);
-            throw error;
+            console.error('Error fetching character info:', error.message);
+            return null;
         }
     }
 
     async createOrGetChat() {
         try {
             // Пробуем получить существующий чат
-            const response = await this.client.get(`/chat/history/continue/`, {
+            const response = await this.client.get(`/history/continue/`, {
                 params: { character_external_id: this.characterId }
             });
             return response.data;
@@ -75,7 +80,7 @@ class CharacterAIService {
         Твой характер может меняться в зависимости от кармы.`;
 
         try {
-            await this.client.post('/chat/character/update_greeting/', {
+            await this.client.post('/update_greeting/', {
                 character_external_id: this.characterId,
                 greeting: basePrompt
             });
@@ -99,7 +104,7 @@ class CharacterAIService {
             
             ${lastMessage}`;
 
-            const response = await this.client.post('/chat/streaming/send/', {
+            const response = await this.client.post('/streaming/send/', {
                 history_external_id: this.chatId,
                 text: prompt,
                 tgt: 'internal_id'
@@ -134,7 +139,7 @@ class CharacterAIService {
             const karma = parseInt(characterType.match(/-?\d+/)?.[0] || '0');
 
             const prompt = `Улучши этот текст, сохраняя смысл: ${text}`;
-            const response = await this.client.post('/chat/streaming/send/', {
+            const response = await this.client.post('/streaming/send/', {
                 history_external_id: this.chatId,
                 text: prompt,
                 tgt: 'internal_id'

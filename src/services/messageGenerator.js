@@ -290,54 +290,51 @@ class MessageGenerator {
 
             if (allPhrases.length === 0) return "Гусь молчит...";
 
-            // Получаем фразы с матами
+            // Получаем фразы с матами если нужно
             let swearPhrases = [];
             if (config.SWEAR_PROBABILITY > 0) {
                 const { data: swears } = await this.supabase
                     .from('phrases')
                     .select('phrase')
-                    .or(
-                        'phrase.ilike.%хуй%,phrase.ilike.%пизд%,phrase.ilike.%ебл%,' +
-                        'phrase.ilike.%бля%,phrase.ilike.%сук%,phrase.ilike.%хер%,' +
-                        'phrase.ilike.%пох%,phrase.ilike.%пидр%'
-                    );
+                    .or('phrase.ilike.%хуй%,phrase.ilike.%пизд%,phrase.ilike.%ебл%,phrase.ilike.%бля%');
                 
                 if (swears?.length > 0) {
                     swearPhrases = swears.map(s => s.phrase);
                 }
             }
 
-            // Выбираем фразы
-            const phraseCount = Math.floor(Math.random() * 3) + 1;
+            // Выбираем 2-3 случайные фразы
+            const phraseCount = Math.floor(Math.random() * 2) + 2; // 2-3 фразы
             const selectedPhrases = [];
 
-            // Добавляем матную фразу если нужно
-            if (config.SWEAR_PROBABILITY > 0 && swearPhrases.length > 0 && 
-                Math.random() * 100 < config.SWEAR_PROBABILITY) {
-                selectedPhrases.push(swearPhrases[Math.floor(Math.random() * swearPhrases.length)]);
+            // Перемешиваем массив фраз для случайного выбора
+            for (let i = allPhrases.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allPhrases[i], allPhrases[j]] = [allPhrases[j], allPhrases[i]];
             }
 
-            // Добавляем остальные фразы
+            // Выбираем случайные фразы
             while (selectedPhrases.length < phraseCount && allPhrases.length > 0) {
-                const index = Math.floor(Math.random() * allPhrases.length);
-                const phrase = allPhrases[index].phrase;
-                
+                const phrase = allPhrases[0].phrase;
                 if (!message.text.toLowerCase().includes(phrase.toLowerCase())) {
                     selectedPhrases.push(phrase);
                 }
-                allPhrases.splice(index, 1);
+                allPhrases.shift();
             }
 
-            // Получаем контекст
+            // Получаем контекст из последних сообщений
             const { data: recentMessages } = await this.supabase
                 .from('messages')
                 .select('text')
                 .eq('chat_id', message.chat.id)
                 .order('created_at', { ascending: false })
-                .limit(10);
+                .limit(20);
 
             const context = recentMessages?.map(m => m.text).join('\n') || '';
             const basePhrase = selectedPhrases.join('. ');
+
+            // Если нет фраз для генерации, возвращаем заглушку
+            if (!basePhrase) return "Гусь молчит...";
 
             // Генерируем ответ
             return await this.gemini.generateContinuation(

@@ -135,22 +135,28 @@ bot.on('message_reaction', async (ctx) => {
         
         if (isPoopReaction) {
             try {
-                // Пробуем получить сообщение через forwardMessage
-                const message = await ctx.telegram.forwardMessage(
+                // Получаем информацию о сообщении
+                const chatMember = await ctx.telegram.getChatMember(
                     reaction.chat.id,
+                    ctx.botInfo.id
+                );
+
+                console.log('Информация о боте в чате:', chatMember);
+
+                // Получаем информацию о сообщении через copyMessage
+                const copiedMessage = await ctx.telegram.copyMessage(
+                    ctx.botInfo.id, // копируем в личку бота
                     reaction.chat.id,
                     reaction.message_id,
                     { disable_notification: true }
                 );
 
-                // Сразу удаляем пересланное сообщение
-                await ctx.telegram.deleteMessage(reaction.chat.id, message.message_id);
-
                 // Проверяем, что сообщение от нашего бота
-                const isBotMessage = message.from.username === 'GooseMind_bot';
+                const isBotMessage = copiedMessage.from?.id === ctx.botInfo.id;
                 
                 console.log('Проверка сообщения:', {
-                    messageFrom: message.from,
+                    messageId: reaction.message_id,
+                    chatId: reaction.chat.id,
                     isBotMessage: isBotMessage
                 });
 
@@ -167,8 +173,24 @@ bot.on('message_reaction', async (ctx) => {
                 } else {
                     console.log('Реакция поставлена не на сообщение бота');
                 }
+
+                // Удаляем скопированное сообщение
+                await ctx.telegram.deleteMessage(ctx.botInfo.id, copiedMessage.message_id);
+
             } catch (error) {
                 console.error('Ошибка при проверке сообщения:', error);
+                
+                // Если произошла ошибка, проверяем по sender_chat
+                const isBotMessage = reaction.message?.sender_chat?.id === ctx.botInfo.id;
+                if (isBotMessage) {
+                    const username = reaction.user?.username;
+                    if (username) {
+                        const response = POOP_REACTION_RESPONSES[
+                            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
+                        ].replace('@user', '@' + username);
+                        await ctx.reply(response);
+                    }
+                }
             }
         }
     } catch (error) {

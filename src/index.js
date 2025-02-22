@@ -30,7 +30,9 @@ let isConnected = true;
 const reconnectInterval = 5000; // 5 секунд между попытками
 
 // В начале файла после создания бота
-const botMessages = new Set(); // Хранилище ID сообщений бота
+const botMessages = new Map(); // Меняем Set на Map для хранения времени
+const MESSAGE_LIMIT = 100; // Уменьшаем лимит до 100 сообщений
+const MESSAGE_TTL = 24 * 60 * 60 * 1000; // Храним сообщения 24 часа
 
 async function reconnect() {
     try {
@@ -125,25 +127,35 @@ const POOP_REACTION_RESPONSES = [
     "@user, твоя «какаха» это как попытка выразить себя, но получилось как всегда."
 ];
 
+// Функция очистки старых сообщений
+function cleanupOldMessages() {
+    const now = Date.now();
+    for (const [key, timestamp] of botMessages) {
+        if (now - timestamp > MESSAGE_TTL) {
+            botMessages.delete(key);
+        }
+    }
+}
+
 // Обработчик реакций ПЕРВЫМ после создания бота
 bot.on('message_reaction', async (ctx) => {
     try {
         const reaction = ctx.update.message_reaction;
         if (!reaction) return;
 
-        // Проверяем, что это реакция 💩
+        const messageKey = `${reaction.chat.id}:${reaction.message_id}`;
         const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
         
         console.log('Данные реакции:', {
             isPoopReaction,
             messageId: reaction.message_id,
             chatId: reaction.chat.id,
-            isBotMessage: botMessages.has(`${reaction.chat.id}:${reaction.message_id}`),
+            isBotMessage: botMessages.has(messageKey),
+            messagesInMemory: botMessages.size,
             reactionFromUsername: reaction.user?.username
         });
 
-        // Проверяем, что это реакция 💩 на сообщение бота
-        if (isPoopReaction && botMessages.has(`${reaction.chat.id}:${reaction.message_id}`)) {
+        if (isPoopReaction && botMessages.has(messageKey)) {
             const username = reaction.user?.username;
             if (username) {
                 const response = POOP_REACTION_RESPONSES[
@@ -151,7 +163,15 @@ bot.on('message_reaction', async (ctx) => {
                 ].replace('@user', '@' + username);
 
                 console.log('Отправляем ответ на реакцию к сообщению бота:', response);
-                await ctx.reply(response);
+                const sentMessage = await ctx.reply(response);
+                botMessages.set(`${ctx.chat.id}:${sentMessage.message_id}`, Date.now());
+                
+                cleanupOldMessages();
+                
+                if (botMessages.size > MESSAGE_LIMIT) {
+                    const oldestKey = Array.from(botMessages.keys())[0];
+                    botMessages.delete(oldestKey);
+                }
             }
         } else {
             console.log('Реакция не подходит для ответа');
@@ -280,13 +300,16 @@ bot.on('text', async (ctx) => {
             // Если ответ не пустой и не заглушка - отправляем
             if (response && response !== "Гусь молчит...") {
                 const sentMessage = await ctx.reply(response);
-                // Сохраняем ID сообщения бота
-                botMessages.add(`${ctx.chat.id}:${sentMessage.message_id}`);
+                // Сохраняем ID сообщения бота вместе с временем
+                botMessages.set(`${ctx.chat.id}:${sentMessage.message_id}`, Date.now());
+                
+                // Очищаем старые сообщения
+                cleanupOldMessages();
                 
                 // Ограничиваем размер хранилища
-                if (botMessages.size > 1000) {
-                    const oldestMessage = Array.from(botMessages)[0];
-                    botMessages.delete(oldestMessage);
+                if (botMessages.size > MESSAGE_LIMIT) {
+                    const oldestKey = Array.from(botMessages.keys())[0];
+                    botMessages.delete(oldestKey);
                 }
             } else {
                 console.log('Пустой ответ от генератора');

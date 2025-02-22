@@ -99,9 +99,16 @@ async function handleCallback(ctx, action) {
                 break;
 
             case 'clear_db':
-                await ctx.answerCbQuery('Очистка базы данных...');
-                await messageHandler.clearDatabase();
-                await ctx.reply('✅ База данных успешно очищена!');
+                try {
+                    await ctx.answerCbQuery('Очистка базы данных...');
+                    await messageHandler.clearDatabase();
+                    await ctx.reply('✅ База данных успешно очищена!\n' +
+                                   'Карма сброшена на значение по умолчанию.\n' +
+                                   'Контекст и история сообщений удалены.');
+                } catch (error) {
+                    console.error('Ошибка очистки базы:', error);
+                    await ctx.reply('❌ Ошибка при очистке базы данных: ' + error.message);
+                }
                 break;
 
             case 'set_karma':

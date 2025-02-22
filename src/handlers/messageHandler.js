@@ -44,8 +44,37 @@ class MessageHandler {
     }
 
     async clearDatabase() {
-        await this.supabase.from('messages').delete().neq('id', 0);
-        await this.supabase.from('words').delete().neq('id', 0);
+        try {
+            console.log('Начало очистки базы данных...');
+            
+            // Очищаем таблицы в правильном порядке (из-за внешних ключей)
+            await this.supabase.from('phrases').delete();
+            console.log('Очищена таблица phrases');
+            
+            await this.supabase.from('messages').delete();
+            console.log('Очищена таблица messages');
+            
+            await this.supabase.from('chat_karma').delete();
+            console.log('Очищена таблица chat_karma');
+            
+            // Очищаем таблицы пользователей и чатов
+            await this.supabase.from('users').delete();
+            console.log('Очищена таблица users');
+            
+            await this.supabase.from('chats').delete();
+            console.log('Очищена таблица chats');
+            
+            // Сбрасываем кэш кармы
+            if (this.karmaService) {
+                this.karmaService.karmaCache.clear();
+            }
+            
+            console.log('База данных успешно очищена');
+            return true;
+        } catch (error) {
+            console.error('Ошибка при очистке базы данных:', error);
+            throw error;
+        }
     }
 
     async analyzeForReaction(message) {

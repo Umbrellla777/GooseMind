@@ -331,33 +331,56 @@ const POOP_REACTION_RESPONSES = [
     "@user, твоя «какаха» это как попытка выразить себя, но получилось как всегда."
 ];
 
-// Добавляем обработчик реакций
-bot.on('message_reaction', async (ctx) => {
+// Обработчик реакций (обновленная версия)
+bot.on('message_reaction_update', async (ctx) => {
     try {
+        console.log('Получена реакция:', ctx.update.message_reaction);
+
         // Проверяем, что это реакция на сообщение бота
-        if (ctx.messageReaction.message.from.id !== ctx.botInfo.id) {
+        const messageAuthorId = ctx.update.message_reaction.message_id?.from?.id;
+        if (messageAuthorId !== ctx.botInfo.id) {
             return;
         }
 
-        // Проверяем, что это реакция 💩
-        const reaction = ctx.messageReaction.reaction;
-        if (!reaction || !reaction.emoji || reaction.emoji !== '💩') {
+        // Проверяем, что это новая реакция 💩
+        const newReactions = ctx.update.message_reaction.new_reaction || [];
+        const hasPoopReaction = newReactions.some(reaction => 
+            reaction.type === 'emoji' && reaction.emoji === '💩'
+        );
+
+        if (!hasPoopReaction) {
             return;
         }
 
-        // Получаем username пользователя, поставившего реакцию
-        const username = ctx.messageReaction.user.username;
-        if (!username) {
+        // Получаем информацию о пользователе
+        const userId = ctx.update.message_reaction.user?.id;
+        if (!userId) {
             return;
         }
 
-        // Выбираем случайный ответ и заменяем @user на реальный тег
-        const response = POOP_REACTION_RESPONSES[
-            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-        ].replace('@user', '@' + username);
+        // Получаем username пользователя
+        try {
+            const user = await ctx.telegram.getChat(userId);
+            const username = user.username;
+            
+            if (!username) {
+                return;
+            }
 
-        // Отправляем ответ
-        await ctx.reply(response);
+            // Выбираем случайный ответ
+            const response = POOP_REACTION_RESPONSES[
+                Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
+            ].replace('@user', '@' + username);
+
+            // Отправляем ответ
+            await ctx.telegram.sendMessage(
+                ctx.update.message_reaction.chat_id,
+                response
+            );
+
+        } catch (error) {
+            console.error('Error getting user info:', error);
+        }
 
     } catch (error) {
         console.error('Error handling reaction:', error);

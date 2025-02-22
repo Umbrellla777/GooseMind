@@ -336,6 +336,8 @@ module.exports = {
     CHARACTER_AI: {
         CHARACTER_ID: process.env.CHARACTER_AI_ID,
         TOKEN: process.env.CHARACTER_AI_TOKEN,
+        EMAIL: process.env.CHARACTER_AI_EMAIL,
+        PASSWORD: process.env.CHARACTER_AI_PASSWORD,
         SETTINGS: {
             MODEL: process.env.CHARACTER_AI_MODEL || 'claude',
             LANGUAGE: process.env.CHARACTER_AI_LANGUAGE || 'russian',

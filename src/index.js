@@ -281,29 +281,37 @@ bot.catch((err, ctx) => {
 // Запуск бота с обработкой ошибок
 async function startBot() {
     try {
-        // Сначала попробуем остановить предыдущую сессию
-        try {
-            await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-        } catch (e) {
-            console.log('Ошибка при удалении вебхука:', e.message);
-        }
+        // Сначала останавливаем бота и удаляем вебхук
+        await bot.telegram.deleteWebhook({ 
+            drop_pending_updates: true 
+        });
 
-        // Запускаем бота с поддержкой реакций
-        await bot.launch({
+        // Устанавливаем конфигурацию для получения обновлений
+        const launchConfig = {
             dropPendingUpdates: true,
             allowedUpdates: [
                 'message',
                 'edited_message',
                 'callback_query',
                 'message_reaction',
-                'message_reaction_count'
+                'message_reaction_count',
+                'chat_member',
+                'my_chat_member'
             ]
-        });
+        };
 
-        console.log('Бот запущен с поддержкой реакций');
+        // Запускаем бота в режиме long polling
+        await bot.launch(launchConfig);
+        
+        // Устанавливаем настройки для получения реакций
+        await bot.telegram.setMyCommands([]);
+        
+        console.log('Бот запущен и готов к работе');
+        console.log('Ожидаемые типы обновлений:', launchConfig.allowedUpdates);
+        
         isConnected = true;
     } catch (error) {
-        console.error('Ошибка при запуске бота:', error.message);
+        console.error('Ошибка при запуске бота:', error);
         isConnected = false;
         setTimeout(startBot, reconnectInterval * 2);
     }
@@ -337,63 +345,43 @@ const POOP_REACTION_RESPONSES = [
     "@user, твоя «какаха» это как попытка выразить себя, но получилось как всегда."
 ];
 
-// Обработчик реакций
-bot.on(['message_reaction', 'message_reaction_count'], async (ctx) => {
+// Обработчик реакций (перемещаем выше)
+bot.on('message_reaction', async (ctx) => {
     try {
         console.log('=== ПОЛУЧЕНА РЕАКЦИЯ ===');
-        console.log('Тип обновления:', ctx.updateType);
-        console.log('Весь контекст:', JSON.stringify(ctx.update, null, 2));
-
+        
         // Получаем данные о реакции
-        const reaction = ctx.update.message_reaction || ctx.update.message_reaction_count;
-        if (!reaction) {
-            console.log('Нет данных о реакции');
+        const reaction = ctx.update.message_reaction;
+        console.log('Данные реакции:', reaction);
+
+        // Быстрая проверка на реакцию 💩
+        if (!reaction?.new_reaction?.some(r => r.emoji === '💩')) {
             return;
         }
 
         // Проверяем, что это реакция на сообщение бота
-        const botUsername = 'GooseMind_bot';
-        console.log('Сообщение от:', reaction.message?.from?.username);
-        
-        if (reaction.message?.from?.username !== botUsername) {
-            console.log('Реакция не на сообщение бота');
+        if (reaction.message?.from?.username !== 'GooseMind_bot') {
             return;
         }
 
-        // Проверяем наличие реакции 💩
-        const hasPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
-        console.log('Проверка реакции 💩:', hasPoopReaction);
-
-        if (!hasPoopReaction) {
-            console.log('Нет реакции 💩');
+        // Получаем username пользователя
+        const username = reaction.user?.username;
+        if (!username) {
             return;
         }
 
-        // Получаем данные пользователя
-        const user = reaction.user;
-        if (!user?.username) {
-            console.log('Нет username у пользователя');
-            return;
-        }
-
-        // Формируем и отправляем ответ
+        // Сразу отправляем ответ
         const response = POOP_REACTION_RESPONSES[
             Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-        ].replace('@user', '@' + user.username);
-
-        console.log('Отправляем ответ:', response);
-        console.log('В чат:', reaction.chat.id);
+        ].replace('@user', '@' + username);
 
         await ctx.telegram.sendMessage(
             reaction.chat.id,
             response
         );
 
-        console.log('Ответ успешно отправлен');
-
     } catch (error) {
         console.error('Ошибка обработки реакции:', error);
-        console.error('Полный стек ошибки:', error.stack);
     }
 });
 

@@ -128,64 +128,35 @@ bot.on('message_reaction', async (ctx) => {
         const reaction = ctx.update.message_reaction;
         if (!reaction) return;
 
-        // Проверяем, что это реакция 💩
-        const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
+        // Получаем ID нашего бота
+        const botId = ctx.botInfo.id;
         
-        if (isPoopReaction) {
-            try {
-                // Получаем ID нашего бота
-                const botInfo = await ctx.telegram.getMe();
-                
-                // Пробуем получить сообщение через API
-                const message = await ctx.telegram.callApi('getMessage', {
-                    chat_id: reaction.chat.id,
-                    message_id: reaction.message_id
-                }).catch(async () => {
-                    // Если не получилось, пробуем через forwardMessage
-                    try {
-                        const forwardedMsg = await ctx.telegram.forwardMessage(
-                            reaction.chat.id,
-                            reaction.chat.id,
-                            reaction.message_id,
-                            { disable_notification: true }
-                        );
-                        // Удаляем пересланное сообщение
-                        await ctx.telegram.deleteMessage(reaction.chat.id, forwardedMsg.message_id);
-                        return forwardedMsg;
-                    } catch (e) {
-                        console.error('Ошибка при пересылке:', e);
-                        return null;
-                    }
-                });
+        // Проверяем, что это реакция 💩 и она на сообщение бота
+        const isPoopReaction = reaction.new_reaction?.some(r => r.emoji === '💩');
+        const targetMessage = reaction.message;
 
-                console.log('Полученное сообщение:', message);
+        console.log('Данные реакции:', {
+            isPoopReaction,
+            botId,
+            targetMessageId: reaction.message_id,
+            targetMessageFromId: targetMessage?.from?.id,
+            targetMessageFromUsername: targetMessage?.from?.username,
+            reactionFromUsername: reaction.user?.username
+        });
 
-                // Проверяем, что сообщение от нашего бота
-                const isBotMessage = message?.from?.id === botInfo.id;
+        // Отвечаем только если это реакция 💩 на сообщение бота
+        if (isPoopReaction && targetMessage?.from?.id === botId) {
+            const username = reaction.user?.username;
+            if (username) {
+                const response = POOP_REACTION_RESPONSES[
+                    Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
+                ].replace('@user', '@' + username);
 
-                console.log('Проверка сообщения:', {
-                    messageId: reaction.message_id,
-                    isBotMessage: isBotMessage,
-                    messageFromId: message?.from?.id,
-                    botId: botInfo.id
-                });
-
-                if (isBotMessage) {
-                    const username = reaction.user?.username;
-                    if (username) {
-                        const response = POOP_REACTION_RESPONSES[
-                            Math.floor(Math.random() * POOP_REACTION_RESPONSES.length)
-                        ].replace('@user', '@' + username);
-
-                        console.log('Отправляем ответ на реакцию к сообщению бота:', response);
-                        await ctx.reply(response);
-                    }
-                } else {
-                    console.log('Реакция поставлена не на сообщение бота');
-                }
-            } catch (error) {
-                console.error('Ошибка при проверке сообщения:', error);
+                console.log('Отправляем ответ на реакцию к сообщению бота:', response);
+                await ctx.reply(response);
             }
+        } else {
+            console.log('Реакция не подходит для ответа');
         }
     } catch (error) {
         console.error('Ошибка обработки реакции:', error);

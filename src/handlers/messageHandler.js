@@ -103,6 +103,15 @@ class MessageHandler {
         const MAX_NEGATIVE_CHANGE = -1;
         const MAX_POSITIVE_CHANGE = 0.7;
 
+        // Проверка на повторяющиеся сообщения - делаем в первую очередь
+        const recentMessages = await this.getRecentMessages(message.chat.id, 5);
+        const isRepeat = recentMessages.some(msg => msg.text === message.text);
+        
+        // Если это повтор, сразу возвращаем штраф
+        if (isRepeat) {
+            return -0.3;
+        }
+
         // Паттерны для снижения кармы
         const badPatterns = [
             // Оскорбления и агрессия
@@ -137,11 +146,11 @@ class MessageHandler {
             if (pattern.test(text)) {
                 hasPositivePattern = true;
                 if (pattern.source.includes('спасибо|благодар')) {
-                    karmaChange = (Math.random() * 0.2) + 0.2; // +0.2 до +0.4
+                    karmaChange = (Math.random() * 0.2) + 0.4; // +0.4 до +0.6
                 } else {
                     karmaChange = 0.1; // +0.1
                 }
-                break; // Берем только первое совпадение
+                break;
             }
         }
 
@@ -150,11 +159,11 @@ class MessageHandler {
             for (const pattern of badPatterns) {
                 if (pattern.test(text)) {
                     if (pattern.source.includes('бля|хуй|пизд')) {
-                        karmaChange = -(Math.random() * 0.3 + 0.4); // -0.4 до -0.7
+                        karmaChange = -(Math.random() * 0.3 + 0.3); // -0.3 до -0.6
                     } else {
                         karmaChange = -(Math.random() * 0.2 + 0.1); // -0.1 до -0.3
                     }
-                    break; // Берем только первое совпадение
+                    break;
                 }
             }
         }
@@ -167,12 +176,6 @@ class MessageHandler {
 
             if (/^[А-ЯA-Z\s]+$/.test(text)) {
                 karmaChange -= 0.2;
-            }
-
-            // Проверка на повторяющиеся сообщения
-            const recentMessages = await this.getRecentMessages(message.chat.id, 5);
-            if (recentMessages.some(msg => msg.text === message.text)) {
-                karmaChange -= 0.3;
             }
         }
 

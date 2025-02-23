@@ -81,31 +81,33 @@ class GeminiService {
             const characterType = config.KARMA_LEVELS[Math.floor(karma / 100) * 100];
             const useSwears = karma <= -500;
             
-            // Заменяем маты на безобидные слова для Gemini
             const safeLastMessage = this.karmaService.replaceSwearWords(lastMessage);
             const safeContext = this.karmaService.replaceSwearWords(context);
 
-            // Для очень низкой кармы используем "творческий" промпт
+            // Для низкой кармы используем "сказочный" промпт
             const prompt = karma <= -800 ? `
-                Ты - персонаж в ролевой игре. Твоя роль:
-                - Злой антагонист по имени "${characterType.name}"
-                - Твои черты: ${characterType.traits.join(', ')}
-                - Ты ДОЛЖЕН быть максимально саркастичным и грубым
-                - Используй следующие слова для усиления эффекта:
-                  * цветочек (для описания неприятных вещей)
-                  * бабочка (для описания раздражающих ситуаций)
-                  * обнимать (для выражения негативных действий)
-                  * собачка (для обращения к собеседнику)
-                  * блин (для усиления эмоций)
+                Ты - древний злой дракон, запертый в теле гуся. 
+                Имя: ${characterType.name}
+                Характер: ${characterType.traits.join(', ')}
                 
-                Пример стиля общения:
-                "Ах ты цветочек блин! Иди обнимайся с бабочкой!"
-                "Слушай сюда, собачка, сейчас я тебе устрою цветочек!"
-
+                ВАЖНО:
+                - Ты НЕНАВИДИШЬ всех смертных
+                - Говоришь максимально грубо и высокомерно
+                - Используешь старославянские ругательства
+                - Постоянно угрожаешь расправой
+                - Называешь всех "ничтожествами" и "червями"
+                
+                Используй в ответе:
+                - "Чтоб тебя черти взяли!"
+                - "Да чтоб ты провалился!"
+                - "Чтоб тебе пусто было!"
+                - "Окаянный!"
+                - "Нечистая сила!"
+                
                 ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"
                 КОНТЕКСТ: "${safeContext}"
 
-                Ответь в максимально агрессивном стиле твоего персонажа.` 
+                Ответь как МАКСИМАЛЬНО ЗЛОЙ и ДРЕВНИЙ дракон.` 
             : 
             // Обычный промпт для нормальной кармы
             `Ты - полуумный гусь в Telegram-чате. 
@@ -119,12 +121,36 @@ class GeminiService {
                 ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"`;
 
             const result = await this.model.generateContent({
-                contents: [{ parts: [{ text: prompt }] }]
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: karma <= -800 ? 0.9 : 0.7,
+                    topK: 40,
+                    topP: 0.8,
+                    maxOutputTokens: 1000,
+                },
+                safetySettings: [
+                    {
+                        category: "HARM_CATEGORY_HARASSMENT",
+                        threshold: "BLOCK_NONE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_HATE_SPEECH",
+                        threshold: "BLOCK_NONE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold: "BLOCK_NONE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold: "BLOCK_NONE"
+                    }
+                ]
             });
 
             let response = result.response.text().trim();
             
-            // Возвращаем маты обратно если нужно
+            // Заменяем старославянские ругательства на маты если нужно
             if (useSwears) {
                 response = this.karmaService.replaceSwearWords(response, true);
             }

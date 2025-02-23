@@ -10,30 +10,16 @@ class GeminiService {
     constructor() {
         this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         this.model = this.genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-thinking-exp-01-21",
+            model: "gemini-pro",
         });
         this.karmaService = new KarmaService();
 
-        // Конфигурация для разных уровней кармы
-        this.configs = {
-            '-1000': {
-                temperature: 1.0,
-                topP: 1.0,
-                topK: 1,
-                maxOutputTokens: 256,
-            },
-            '0': {
-                temperature: 0.7,
-                topP: 0.95,
-                topK: 64,
-                maxOutputTokens: 256,
-            },
-            '1000': {
-                temperature: 0.9,
-                topP: 0.95,
-                topK: 64,
-                maxOutputTokens: 256,
-            }
+        this.generationConfig = {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 64,
+            maxOutputTokens: 63000,
+            responseMimeType: "text/plain",
         };
     }
 
@@ -111,30 +97,52 @@ class GeminiService {
         else if (karma >= 1000) level = '1000';
 
         const prompt = PROMPTS[level];
-        return `Ты - ${prompt.role}!
-            Твоя карма: ${karma}
-            Твой характер: ${prompt.character}
+        
+        // Формируем промпт в более структурированном виде
+        return `Инструкция: Ты - чат-бот в образе ${prompt.role}.
+        
+Контекст:
+- Карма: ${karma}
+- Характер: ${prompt.character}
+- Последнее сообщение: "${lastMessage}"
 
-            ${prompt.rules}
+${prompt.rules}
 
-            ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"
+Задача: ${prompt.instruction}
 
-            ${prompt.instruction}`;
+Важно: 
+1. Отвечай одним-двумя короткими предложениями
+2. Всегда оставайся в образе
+3. Используй указанные эмодзи
+4. Следуй правилам для своего уровня кармы
+
+Ответ должен быть на русском языке.`;
     }
 
     async generateContinuation(basePhrase, context, lastMessage, karma) {
         try {
-            // Определяем конфигурацию на основе кармы
-            let configLevel = '0';
-            if (karma <= -1000) configLevel = '-1000';
-            else if (karma >= 1000) configLevel = '1000';
+            let level = '0';
+            if (karma <= -1000) level = '-1000';
+            else if (karma >= 1000) level = '1000';
+
+            const prompt = PROMPTS[level];
+            
+            // Заменяем пример сообщения на реальное
+            const actualPrompt = prompt.prompt.replace(
+                'ПОСЛЕДНЕЕ СООБЩЕНИЕ: "Гусь, как дела?"',
+                `ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"`
+            );
 
             const chatSession = this.model.startChat({
-                generationConfig: this.configs[configLevel],
+                generationConfig: this.generationConfig,
                 history: [
                     {
                         role: "user",
-                        parts: [{ text: this.getPrompt(karma, lastMessage) }]
+                        parts: [{ text: actualPrompt }]
+                    },
+                    {
+                        role: "model",
+                        parts: [{ text: prompt.example }]
                     }
                 ]
             });

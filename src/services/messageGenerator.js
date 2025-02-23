@@ -255,6 +255,15 @@ class MessageGenerator {
 
     async generateResponse(message) {
         try {
+            // Получаем текущую карму чата
+            const { data: karmaData } = await this.supabase
+                .from('chat_karma')
+                .select('karma_value')
+                .eq('chat_id', message.chat.id)
+                .single();
+
+            const chatKarma = karmaData?.karma_value || 0;
+
             return await this.generateLocalResponse(message);
         } catch (error) {
             console.error('Error in generateResponse:', error);
@@ -341,8 +350,7 @@ class MessageGenerator {
                 basePhrase,
                 context,
                 message.text,
-                config.SWEAR_PROBABILITY,
-                swearPhrases
+                chatKarma
             );
         } catch (error) {
             console.error('Error generating response:', error);

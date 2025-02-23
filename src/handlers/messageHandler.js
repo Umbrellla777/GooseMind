@@ -94,6 +94,125 @@ class MessageHandler {
             return null;
         }
     }
+
+    async analyzeMessageForKarma(message) {
+        if (!message?.text) return 0;
+        const text = message.text.toLowerCase();
+
+        // Паттерны для снижения кармы
+        const badPatterns = [
+            // Оскорбления и агрессия
+            /(дур[ао]к|идиот|тупой|мудак|козел|придурок)/i,
+            /(пош[её]л ты|иди на|вали отсюда)/i,
+            // Маты и ругательства
+            /(бля|хуй|пизд|еб[ао]|сук[аи]|хер)/i,
+            // Негативные эмоции
+            /(ненавижу|бесит|достал|заебал)/i,
+            // Спам и флуд
+            /(.)\1{4,}/,  // Повторяющиеся символы
+            /(.)(?:\1|\s){10,}/  // Длинные последовательности
+        ];
+
+        // Паттерны для повышения кармы
+        const goodPatterns = [
+            // Благодарность и вежливость
+            /(спасибо|благодарю|пожалуйста|будьте добры)/i,
+            // Позитивные оценки
+            /(круто|классно|здорово|отлично|супер)/i,
+            // Конструктивные фразы
+            /(предлагаю|давайте|помог|полезно)/i,
+            // Поддержка и эмпатия
+            /(понимаю|сочувствую|поддерживаю|согласен)/i,
+            // Приветствия и прощания
+            /(здравствуйте|доброе|привет|до свидания|всего доброго)/i
+        ];
+
+        let karmaChange = 0;
+
+        // Проверяем негативные паттерны
+        for (const pattern of badPatterns) {
+            if (pattern.test(text)) {
+                // Более серьезные нарушения снижают карму сильнее
+                if (pattern.source.includes('бля|хуй|пизд')) {
+                    karmaChange -= Math.floor(Math.random() * 5) + 6; // -6 до -10
+                } else {
+                    karmaChange -= Math.floor(Math.random() * 3) + 1; // -1 до -3
+                }
+            }
+        }
+
+        // Проверяем позитивные паттерны
+        for (const pattern of goodPatterns) {
+            if (pattern.test(text)) {
+                // Разные типы хороших сообщений дают разный бонус
+                if (pattern.source.includes('спасибо|благодарю')) {
+                    karmaChange += Math.floor(Math.random() * 3) + 3; // +3 до +5
+                } else {
+                    karmaChange += Math.floor(Math.random() * 2) + 1; // +1 до +2
+                }
+            }
+        }
+
+        // Дополнительные проверки
+        if (text.length > 200) {
+            // Длинные осмысленные сообщения немного повышают карму
+            karmaChange += 1;
+        }
+
+        if (/^[А-ЯA-Z\s]+$/.test(text)) {
+            // Капс снижает карму
+            karmaChange -= 2;
+        }
+
+        // Проверка на повторяющиеся сообщения
+        const recentMessages = await this.getRecentMessages(message.chat.id, 5);
+        if (recentMessages.some(msg => msg.text === message.text)) {
+            karmaChange -= 3; // Штраф за повторы
+        }
+
+        // Ограничиваем максимальное изменение кармы за одно сообщение
+        return Math.max(-10, Math.min(7, karmaChange));
+    }
+
+    async getRecentMessages(chatId, limit = 5) {
+        try {
+            const { data: messages } = await this.supabase
+                .from('messages')
+                .select('text')
+                .eq('chat_id', chatId)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            return messages || [];
+        } catch (error) {
+            console.error('Error getting recent messages:', error);
+            return [];
+        }
+    }
+
+    async updateKarmaForMessage(message) {
+        if (!message?.chat?.id) return null;
+
+        const karmaChange = await this.analyzeMessageForKarma(message);
+        if (karmaChange === 0) return null;
+
+        const { data: currentKarma } = await this.supabase
+            .from('chat_karma')
+            .select('karma_value')
+            .eq('chat_id', message.chat.id)
+            .single();
+
+        const newKarma = Math.max(-1000, Math.min(1000, (currentKarma?.karma_value || 0) + karmaChange));
+
+        await this.supabase
+            .from('chat_karma')
+            .upsert({
+                chat_id: message.chat.id,
+                karma_value: newKarma,
+                last_update: new Date().toISOString()
+            });
+
+        return { oldKarma: currentKarma?.karma_value || 0, newKarma };
+    }
 }
 
 module.exports = { MessageHandler }; 

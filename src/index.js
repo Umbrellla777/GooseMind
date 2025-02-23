@@ -23,7 +23,7 @@ const messageGenerator = new MessageGenerator(supabase);
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
-let awaitingSwearProbability = false;
+let awaitingKarma = false;
 
 // Добавим обработку разрыва соединения
 let isConnected = true;
@@ -47,6 +47,49 @@ async function reconnect() {
         console.error('Ошибка при переподключении:', error.message);
         setTimeout(reconnect, reconnectInterval);
     }
+}
+
+// Функция для получения характеристики кармы
+function getKarmaCharacteristic(karma) {
+    const levels = Object.keys(config.KARMA_LEVELS)
+        .map(Number)
+        .sort((a, b) => a - b);
+    
+    const level = levels.find(l => karma <= l) || levels[levels.length - 1];
+    return config.KARMA_LEVELS[level];
+}
+
+// Функция для получения текущей кармы чата
+async function getChatKarma(chatId) {
+    const { data } = await supabase
+        .from('chat_karma')
+        .select('karma_value')
+        .eq('chat_id', chatId)
+        .single();
+    
+    return data?.karma_value || 0;
+}
+
+// Функция для обновления кармы чата
+async function updateChatKarma(chatId, newKarma) {
+    const oldKarma = await getChatKarma(chatId);
+    const oldLevel = Math.floor(oldKarma / 100) * 100;
+    const newLevel = Math.floor(newKarma / 100) * 100;
+
+    await supabase
+        .from('chat_karma')
+        .upsert({
+            chat_id: chatId,
+            karma_value: newKarma,
+            last_update: new Date().toISOString()
+        });
+
+    // Проверяем изменение уровня
+    if (oldLevel !== newLevel) {
+        const characteristic = getKarmaCharacteristic(newLevel);
+        return `Карма чата ${newKarma > oldKarma ? 'повысилась' : 'понизилась'} до уровня ${newLevel}! Теперь это: ${characteristic}`;
+    }
+    return null;
 }
 
 // Добавляем функцию handleCallback перед регистрацией обработчиков
@@ -79,14 +122,14 @@ async function handleCallback(ctx, action) {
                 );
                 break;
 
-            case 'toggle_swears':
-                awaitingSwearProbability = true;
-                await ctx.answerCbQuery('Введите вероятность матов');
+            case 'set_karma':
+                awaitingKarma = true;
+                const currentKarma = await getChatKarma(ctx.chat.id);
+                const characteristic = getKarmaCharacteristic(currentKarma);
+                await ctx.answerCbQuery('Введите новое значение кармы');
                 await ctx.reply(
-                    '🤬 Введите вероятность использования матов (от 0 до 100%).\n' +
-                    'Например: 50 - маты будут в 50% ответов\n' +
-                    '0 - маты отключены\n' +
-                    'Текущее значение: ' + config.SWEAR_PROBABILITY + '%'
+                    `Настройщик: Укажите новое значение кармы чата (от -1000 до 1000).\n` +
+                    `Текущая карма: ${currentKarma} — ${characteristic}`
                 );
                 break;
 
@@ -203,7 +246,7 @@ bot.on('text', async (ctx) => {
                         { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '🤬 Частота матов', callback_data: 'toggle_swears' }
+                        { text: '🌟 Карма чата', callback_data: 'set_karma' }
                     ],
                     [
                         { text: '🗑 Очистить память', callback_data: 'clear_db' }
@@ -214,8 +257,7 @@ bot.on('text', async (ctx) => {
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Вероятность матов: ${config.SWEAR_PROBABILITY}%`,
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}%`,
                 { reply_markup: keyboard }
             );
             return;
@@ -249,16 +291,20 @@ bot.on('text', async (ctx) => {
             }
         }
 
-        // Проверяем ввод вероятности матов
-        if (awaitingSwearProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 0 && prob <= 100) {
-                config.SWEAR_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность матов установлена на ${prob}%`);
-                awaitingSwearProbability = false;
+        // Проверяем ввод кармы
+        if (awaitingKarma && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
+            const karma = parseInt(ctx.message.text);
+            if (!isNaN(karma) && karma >= -1000 && karma <= 1000) {
+                const notification = await updateChatKarma(ctx.chat.id, karma);
+                const characteristic = getKarmaCharacteristic(karma);
+                await ctx.reply(`Карма чата установлена на ${karma}. Характеристика: ${characteristic}`);
+                if (notification) {
+                    await ctx.reply(notification);
+                }
+                awaitingKarma = false;
                 return;
             } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
+                await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
                 return;
             }
         }
@@ -269,6 +315,20 @@ bot.on('text', async (ctx) => {
             if (!result) {
                 console.log('Пробуем прямое сохранение...');
                 await messageGenerator.saveMessageDirect(ctx.message);
+            }
+            
+            // Обновляем карму на основе сообщения
+            const karmaUpdate = await messageHandler.updateKarmaForMessage(ctx.message);
+            if (karmaUpdate) {
+                const oldLevel = Math.floor(karmaUpdate.oldKarma / 100) * 100;
+                const newLevel = Math.floor(karmaUpdate.newKarma / 100) * 100;
+                if (oldLevel !== newLevel) {
+                    const characteristic = getKarmaCharacteristic(newLevel);
+                    await ctx.reply(
+                        `Карма чата ${karmaUpdate.newKarma > karmaUpdate.oldKarma ? 'повысилась' : 'понизилась'} ` +
+                        `до уровня ${newLevel}! Теперь это: ${characteristic}`
+                    );
+                }
             }
         } catch (saveError) {
             console.error('Ошибка при сохранении сообщения:', saveError);
@@ -347,7 +407,7 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопок с быстрым ответом
 bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
 bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
+bot.action('set_karma', ctx => handleCallback(ctx, 'set_karma'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
 
 // И добавим обработку ошибок

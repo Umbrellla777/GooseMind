@@ -104,17 +104,14 @@ class MessageHandler {
             text.includes(name.toLowerCase())
         );
 
-        // Функция для проверки наличия паттернов в тексте
-        const hasPatterns = (patterns) => {
-            return patterns.some(pattern => pattern.test(text));
-        };
+        // Определяем множитель влияния на карму
+        // 0.3 - для обращений к гусю (менее значимые)
+        // 1.0 - для общения между участниками (более значимые)
+        const karmaMultiplier = isDirectedToGoose ? 0.3 : 1.0;
 
         let karmaChange = 0;
         const MAX_NEGATIVE_CHANGE = -1;
         const MAX_POSITIVE_CHANGE = 0.7;
-
-        // Коэффициент влияния на карму
-        const karmaMultiplier = isDirectedToGoose ? 1 : 0.3;
 
         // Разделяем паттерны по уровням влияния
         const karmaPatterns = {
@@ -163,31 +160,40 @@ class MessageHandler {
         // Проверка на повторяющиеся сообщения
         const recentMessages = await this.getRecentMessages(message.chat.id, 5);
         if (recentMessages.some(msg => msg.text === message.text)) {
-            return -0.3 * karmaMultiplier; // Штраф за повторы с учетом множителя
+            return -0.3;
         }
 
-        // Определяем изменение кармы на основе паттернов
+        // Определяем базовое изменение кармы
         if (hasPatterns(karmaPatterns.veryPositive)) {
-            karmaChange = 0.5 + Math.random() * 0.2; // +0.5 до +0.7
+            karmaChange = 0.5 + Math.random() * 0.2; // Базовое +0.5 до +0.7
         } else if (hasPatterns(karmaPatterns.positive)) {
-            karmaChange = 0.3 + Math.random() * 0.1; // +0.3 до +0.4
+            karmaChange = 0.3 + Math.random() * 0.1; // Базовое +0.3 до +0.4
         } else if (hasPatterns(karmaPatterns.slightlyPositive)) {
-            karmaChange = 0.1 + Math.random() * 0.1; // +0.1 до +0.2
+            karmaChange = 0.1 + Math.random() * 0.1; // Базовое +0.1 до +0.2
         } else if (hasPatterns(karmaPatterns.veryNegative)) {
-            karmaChange = -(0.7 + Math.random() * 0.3); // -0.7 до -1.0
+            karmaChange = -(0.7 + Math.random() * 0.3); // Базовое -0.7 до -1.0
         } else if (hasPatterns(karmaPatterns.negative)) {
-            karmaChange = -(0.4 + Math.random() * 0.2); // -0.4 до -0.6
+            karmaChange = -(0.4 + Math.random() * 0.2); // Базовое -0.4 до -0.6
         } else if (hasPatterns(karmaPatterns.slightlyNegative)) {
-            karmaChange = -(0.1 + Math.random() * 0.2); // -0.1 до -0.3
+            karmaChange = -(0.1 + Math.random() * 0.2); // Базовое -0.1 до -0.3
         }
 
-        // Применяем множитель кармы
-        karmaChange *= karmaMultiplier;
+        // Применяем множитель к изменению кармы
+        if (karmaChange !== 0) {
+            const originalChange = karmaChange;
+            karmaChange *= karmaMultiplier;
+            console.log('Karma multiplier applied:', {
+                originalChange,
+                multiplier: karmaMultiplier,
+                finalChange: karmaChange,
+                isDirectedToGoose: isDirectedToGoose ? 'к гусю (x0.3)' : 'между участниками (x1.0)'
+            });
+        }
 
         // Дополнительные проверки только если нет явных паттернов
         if (karmaChange === 0) {
             if (text.length > 200) {
-                karmaChange = 0.1 * karmaMultiplier; // Бонус с учетом множителя
+                karmaChange = 0.1 * karmaMultiplier;
             }
         }
 

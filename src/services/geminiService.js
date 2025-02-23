@@ -1,10 +1,12 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const config = require('../config');
+const { KarmaService } = require('./karmaService');
 
 class GeminiService {
     constructor() {
         this.genAI = new GoogleGenerativeAI(config.GEMINI.API_KEY);
         this.model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        this.karmaService = new KarmaService();
     }
 
     async analyzeMessage(text) {
@@ -74,56 +76,24 @@ class GeminiService {
         }
     }
 
-    async generateContinuation(basePhrase, context, lastMessage, swearProbability, swearPhrases = []) {
+    async generateContinuation(basePhrase, context, lastMessage, karma) {
         try {
-            const useSwears = Math.random() * 100 < swearProbability;
+            const characterType = config.KARMA_LEVELS[Math.floor(karma / 100) * 100];
+            const useSwears = karma <= -500;
             
-            // Разбиваем контекст на сообщения
-            const recentMessages = context.split('\n')
-                .filter(msg => msg.trim().length > 0)
-                .slice(-50) // Берем последние 50 сообщений для лучшего контекста
-                .map(msg => msg.trim());
+            // Заменяем маты на безобидные слова для Gemini
+            const safeLastMessage = this.karmaService.replaceSwearWords(lastMessage);
+            const safeContext = this.karmaService.replaceSwearWords(context);
 
-            // Анализируем последнее сообщение
-            const analysisPrompt = `Проанализируй сообщение пользователя и определи:
-                Сообщение: "${lastMessage}"
+            const responsePrompt = `Ты - полуумный гусь в Telegram-чате. 
+                Твой текущий характер: ${characterType.name}
+                Особенности: ${characterType.traits.join(', ')}
+                Карма: ${karma}
 
-                1. Тип сообщения: [вопрос/утверждение/шутка/оскорбление]
-                2. Эмоциональный тон: [позитивный/негативный/нейтральный/саркастичный]
-                3. Тема: [о чем говорит пользователь]
-                4. Ожидаемый ответ: [что пользователь хочет услышать]`;
-
-            const analysis = await this.model.generateContent({
-                contents: [{ parts: [{ text: analysisPrompt }] }]
-            });
-
-            const responsePrompt = `Ты - полуумный гусь в Telegram-чате. Тебе нужно ответить на сообщение.
-
-                ТВОЙ ХАРАКТЕР:
-                - Саркастичный и ироничный
-                - Считаешь себя умнее всех
-                - Любишь подкалывать собеседников
-                - Отвечаешь с юмором, но по делу
-                - Используешь современный сленг
+                КОНТЕКСТ БЕСЕДЫ:
+                ${safeContext}
                 
-                КОНТЕКСТ БЕСЕДЫ (последние сообщения):
-                ${recentMessages.map(msg => `- ${msg}`).join('\n')}
-                
-                ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"
-                
-                АНАЛИЗ СООБЩЕНИЯ:
-                ${analysis.response.text()}
-                
-                ПРАВИЛА ОТВЕТА:
-                1. Если это вопрос - дай конкретный, но саркастичный ответ
-                2. Если шутка - ответь более смешной шуткой
-                3. Если оскорбление - парируй с иронией
-                4. Используй сленг и современные мемы
-                5. Добавляй эмоджи где уместно
-                6. Будь остроумным, но не злым
-                7. Поддерживай тему разговора
-                
-                ${useSwears ? 'Можно использовать умеренный мат' : 'Без мата'}`;
+                ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"`;
 
             const result = await this.model.generateContent({
                 contents: [{ parts: [{ text: responsePrompt }] }]
@@ -131,6 +101,11 @@ class GeminiService {
 
             let response = result.response.text().trim();
             
+            // Возвращаем маты обратно если нужно
+            if (useSwears) {
+                response = this.karmaService.replaceSwearWords(response, true);
+            }
+
             return response;
         } catch (error) {
             console.error('Gemini continuation error:', error);

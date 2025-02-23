@@ -99,92 +99,110 @@ class MessageHandler {
         if (!message?.text) return 0;
         const text = message.text.toLowerCase();
 
+        // Проверяем, адресовано ли сообщение гусю
+        const isDirectedToGoose = config.BOT_NAMES.some(name => 
+            text.includes(name.toLowerCase())
+        );
+
+        // Функция для проверки наличия паттернов в тексте
+        const hasPatterns = (patterns) => {
+            return patterns.some(pattern => pattern.test(text));
+        };
+
         let karmaChange = 0;
         const MAX_NEGATIVE_CHANGE = -1;
         const MAX_POSITIVE_CHANGE = 0.7;
 
-        // Проверка на повторяющиеся сообщения - делаем в первую очередь
+        // Коэффициент влияния на карму
+        const karmaMultiplier = isDirectedToGoose ? 1 : 0.3;
+
+        // Разделяем паттерны по уровням влияния
+        const karmaPatterns = {
+            veryPositive: [
+                /(спасибо|благодар)/i,
+                /(люблю|обожаю) (тебя|гус[ья])/i,
+                /ты лучший/i,
+                /(прекрасн|великолепн|замечательн)/i,
+                /(восхитительн|потрясающ)/i
+            ],
+            positive: [
+                /(молодец|красав|хорош)/i,
+                /(круто|класс|здорово|отлично|супер)/i,
+                /(рад|счастлив|доволен)/i,
+                /(помог|поддерж|выруч)/i,
+                /(спасиб|благодар)/i
+            ],
+            slightlyPositive: [
+                /(привет|здравствуй|добр)/i,
+                /(пожалуйста|будьте добры|прошу|извини)/i,
+                /(согласен|понимаю|поддержива)/i,
+                /(хорош|норм|ладно)/i,
+                /(да|конечно|точно)/i
+            ],
+            slightlyNegative: [
+                /^[А-ЯA-Z\s]+$/,  // Капс
+                /(дурак|тупой)/i,
+                /(не нравится|неприятно)/i,
+                /(глуп|бестолков)/i,
+                /(фу|бе|мда)/i
+            ],
+            negative: [
+                /(пош[её]л ты|иди на|вали отсюда)/i,
+                /(ненавижу|бесит|достал)/i,
+                /(мудак|козел|придурок)/i,
+                /(заткнись|молчи|закройся)/i,
+                /(отстой|дерьмо|говно)/i
+            ],
+            veryNegative: [
+                /(бля|хуй|пизд|еб[ао]|сук[аи]|хер)/i,
+                /(нахуй|похуй|заебал)/i,
+                /(пидор|гандон|мразь)/i
+            ]
+        };
+
+        // Проверка на повторяющиеся сообщения
         const recentMessages = await this.getRecentMessages(message.chat.id, 5);
-        const isRepeat = recentMessages.some(msg => msg.text === message.text);
-        
-        // Если это повтор, сразу возвращаем штраф
-        if (isRepeat) {
-            return -0.3;
+        if (recentMessages.some(msg => msg.text === message.text)) {
+            return -0.3 * karmaMultiplier; // Штраф за повторы с учетом множителя
         }
 
-        // Паттерны для снижения кармы
-        const badPatterns = [
-            // Оскорбления и агрессия
-            /(дур[ао]к|идиот|тупой|мудак|козел|придурок)/i,
-            /(пош[её]л ты|иди на|вали отсюда)/i,
-            // Маты и ругательства
-            /(бля|хуй|пизд|еб[ао]|сук[аи]|хер)/i,
-            // Негативные эмоции
-            /(ненавижу|бесит|достал|заебал)/i,
-            // Спам и флуд
-            /(.)\1{4,}/,  // Повторяющиеся символы
-            /(.)(?:\1|\s){10,}/  // Длинные последовательности
-        ];
-
-        // Паттерны для повышения кармы
-        const goodPatterns = [
-            // Благодарность и вежливость
-            /(спасибо|благодар|пожалуйста|будьте добры|прошу|извини)/i,
-            // Позитивные оценки
-            /(круто|класс|здорово|отлично|супер|молодец|хорош|красав)/i,
-            // Конструктивные фразы
-            /(предлагаю|давайте|помог|полезно|поддержив|согласен)/i,
-            // Поддержка и эмпатия
-            /(понимаю|сочувству|поддержива|люб|рад|добр)/i,
-            // Приветствия и прощания
-            /(здравствуй|добр|привет|пока|до свидания|всего хорошего)/i
-        ];
-
-        // Сначала проверяем позитивные паттерны
-        let hasPositivePattern = false;
-        for (const pattern of goodPatterns) {
-            if (pattern.test(text)) {
-                hasPositivePattern = true;
-                if (pattern.source.includes('спасибо|благодар')) {
-                    karmaChange = (Math.random() * 0.2) + 0.4; // +0.4 до +0.6
-                } else {
-                    karmaChange = 0.1; // +0.1
-                }
-                break;
-            }
+        // Определяем изменение кармы на основе паттернов
+        if (hasPatterns(karmaPatterns.veryPositive)) {
+            karmaChange = 0.5 + Math.random() * 0.2; // +0.5 до +0.7
+        } else if (hasPatterns(karmaPatterns.positive)) {
+            karmaChange = 0.3 + Math.random() * 0.1; // +0.3 до +0.4
+        } else if (hasPatterns(karmaPatterns.slightlyPositive)) {
+            karmaChange = 0.1 + Math.random() * 0.1; // +0.1 до +0.2
+        } else if (hasPatterns(karmaPatterns.veryNegative)) {
+            karmaChange = -(0.7 + Math.random() * 0.3); // -0.7 до -1.0
+        } else if (hasPatterns(karmaPatterns.negative)) {
+            karmaChange = -(0.4 + Math.random() * 0.2); // -0.4 до -0.6
+        } else if (hasPatterns(karmaPatterns.slightlyNegative)) {
+            karmaChange = -(0.1 + Math.random() * 0.2); // -0.1 до -0.3
         }
 
-        // Если нет позитивного паттерна, проверяем негативные
-        if (!hasPositivePattern) {
-            for (const pattern of badPatterns) {
-                if (pattern.test(text)) {
-                    if (pattern.source.includes('бля|хуй|пизд')) {
-                        karmaChange = -(Math.random() * 0.3 + 0.3); // -0.3 до -0.6
-                    } else {
-                        karmaChange = -(Math.random() * 0.2 + 0.1); // -0.1 до -0.3
-                    }
-                    break;
-                }
-            }
-        }
+        // Применяем множитель кармы
+        karmaChange *= karmaMultiplier;
 
         // Дополнительные проверки только если нет явных паттернов
         if (karmaChange === 0) {
             if (text.length > 200) {
-                karmaChange += 0.1;
-            }
-
-            if (/^[А-ЯA-Z\s]+$/.test(text)) {
-                karmaChange -= 0.2;
+                karmaChange = 0.1 * karmaMultiplier; // Бонус с учетом множителя
             }
         }
 
         console.log('Karma change analysis:', {
             text,
             karmaChange,
+            isDirectedToGoose,
+            karmaMultiplier,
             patterns: {
-                good: goodPatterns.some(p => p.test(text)),
-                bad: badPatterns.some(p => p.test(text))
+                veryPositive: hasPatterns(karmaPatterns.veryPositive),
+                positive: hasPatterns(karmaPatterns.positive),
+                slightlyPositive: hasPatterns(karmaPatterns.slightlyPositive),
+                slightlyNegative: hasPatterns(karmaPatterns.slightlyNegative),
+                negative: hasPatterns(karmaPatterns.negative),
+                veryNegative: hasPatterns(karmaPatterns.veryNegative)
             }
         });
 

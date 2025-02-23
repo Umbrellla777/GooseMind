@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
 const config = require('./config');
+const geminiService = require('./services/geminiService');
 
 // Настройки для бота
 const botOptions = {
@@ -71,25 +72,33 @@ async function getChatKarma(chatId) {
 }
 
 // Функция для обновления кармы чата
-async function updateChatKarma(chatId, newKarma) {
-    const oldKarma = await getChatKarma(chatId);
-    const oldLevel = Math.floor(oldKarma / 100) * 100;
-    const newLevel = Math.floor(newKarma / 100) * 100;
+async function updateChatKarma(chatId, change) {
+    try {
+        const { data: oldKarmaData } = await supabase
+            .from('chat_karma')
+            .select('karma_value')
+            .eq('chat_id', chatId)
+            .single();
 
-    await supabase
-        .from('chat_karma')
-        .upsert({
-            chat_id: chatId,
-            karma_value: newKarma,
-            last_update: new Date().toISOString()
-        });
+        const oldKarma = oldKarmaData?.karma_value || 0;
+        const newKarma = Math.max(-1000, Math.min(1000, (oldKarma || 0) + change));
 
-    // Проверяем изменение уровня
-    if (oldLevel !== newLevel) {
-        const characteristic = getKarmaCharacteristic(newLevel);
-        return `Карма чата ${newKarma > oldKarma ? 'повысилась' : 'понизилась'} до уровня ${newLevel}! Теперь это: ${characteristic}`;
+        const { data, error } = await supabase
+            .from('chat_karma')
+            .upsert({ chat_id: chatId, karma_value: newKarma });
+
+        if (error) throw error;
+
+        const karmaChangeMessage = geminiService.formatKarmaChange(oldKarma, newKarma);
+        if (karmaChangeMessage) {
+            await bot.telegram.sendMessage(chatId, karmaChangeMessage);
+        }
+
+        return newKarma;
+    } catch (error) {
+        console.error('Error updating karma:', error);
+        return null;
     }
-    return null;
 }
 
 // Добавляем функцию handleCallback перед регистрацией обработчиков

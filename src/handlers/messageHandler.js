@@ -37,8 +37,8 @@ class MessageHandler {
         return config.BOT_NAMES.some(name => 
             lowerText.includes(name.toLowerCase()) ||
             // Добавляем проверку для составных имен
-            (name.toLowerCase() === 'полуумный гусь' && 
-             lowerText.includes('полуумный') && 
+            (name.toLowerCase() === 'полоумный гусь' && 
+             lowerText.includes('полоумный') && 
              lowerText.includes('гусь'))
         );
     }

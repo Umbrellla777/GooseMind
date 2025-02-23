@@ -5,7 +5,15 @@ const { KarmaService } = require('./karmaService');
 class GeminiService {
     constructor() {
         this.genAI = new GoogleGenerativeAI(config.GEMINI.API_KEY);
-        this.model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        this.model = this.genAI.getGenerativeModel({ 
+            model: "gemini-pro",
+            generationConfig: {
+                temperature: 1.0,
+                topK: 1,
+                topP: 1,
+                maxOutputTokens: 256,
+            }
+        });
         this.karmaService = new KarmaService();
     }
 
@@ -84,33 +92,10 @@ class GeminiService {
             const safeLastMessage = this.karmaService.replaceSwearWords(lastMessage);
             const safeContext = this.karmaService.replaceSwearWords(context);
 
-            // Для низкой кармы используем "сказочный" промпт
-            const prompt = karma <= -800 ? `
-                Ты - древний злой дракон, запертый в теле гуся. 
-                Имя: ${characterType.name}
-                Характер: ${characterType.traits.join(', ')}
-                
-                ВАЖНО:
-                - Ты НЕНАВИДИШЬ всех смертных
-                - Говоришь максимально грубо и высокомерно
-                - Используешь старославянские ругательства
-                - Постоянно угрожаешь расправой
-                - Называешь всех "ничтожествами" и "червями"
-                
-                Используй в ответе:
-                - "Чтоб тебя черти взяли!"
-                - "Да чтоб ты провалился!"
-                - "Чтоб тебе пусто было!"
-                - "Окаянный!"
-                - "Нечистая сила!"
-                
-                ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"
-                КОНТЕКСТ: "${safeContext}"
+            console.log('Оригинальное сообщение:', lastMessage);
+            console.log('Безопасное сообщение:', safeLastMessage);
 
-                Ответь как МАКСИМАЛЬНО ЗЛОЙ и ДРЕВНИЙ дракон.` 
-            : 
-            // Обычный промпт для нормальной кармы
-            `Ты - полуумный гусь в Telegram-чате. 
+            const responsePrompt = `Ты - полуумный гусь в Telegram-чате. 
                 Твой текущий характер: ${characterType.name}
                 Особенности: ${characterType.traits.join(', ')}
                 Карма: ${karma}
@@ -120,14 +105,10 @@ class GeminiService {
                 
                 ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"`;
 
+            console.log('Отправляем промпт:', responsePrompt);
+
             const result = await this.model.generateContent({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: karma <= -800 ? 0.9 : 0.7,
-                    topK: 40,
-                    topP: 0.8,
-                    maxOutputTokens: 1000,
-                },
+                contents: [{ parts: [{ text: responsePrompt }] }],
                 safetySettings: [
                     {
                         category: "HARM_CATEGORY_HARASSMENT",
@@ -150,9 +131,11 @@ class GeminiService {
 
             let response = result.response.text().trim();
             
-            // Заменяем старославянские ругательства на маты если нужно
+            console.log('Ответ от API:', response);
+
             if (useSwears) {
                 response = this.karmaService.replaceSwearWords(response, true);
+                console.log('Ответ после обратной замены:', response);
             }
 
             return response;

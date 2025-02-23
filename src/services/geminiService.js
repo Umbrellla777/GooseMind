@@ -93,48 +93,59 @@ class GeminiService {
 
     async generateContinuation(basePhrase, context, lastMessage, karma) {
         try {
-            // Определяем уровень кармы и соответствующий промпт
             const karmaLevel = Math.floor(karma / 100) * 100;
             const characterType = this.karmaService.getCharacterType(karma);
-            
-            // Получаем базовый промпт для уровня кармы
             let basePrompt = PROMPTS[karmaLevel] || PROMPTS['0'];
-            
-            // Заменяем пример сообщения на реальное
-            const actualPrompt = basePrompt.prompt.replace(
-                'ПОСЛЕДНЕЕ СООБЩЕНИЕ: "Гусь, как дела?"',
-                `ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"`
-            );
+
+            // Формируем историю сообщений
+            const messageHistory = context ? context.split('\n').slice(-50).join('\n') : '';
+
+            // Формируем промпт с учетом характера и контекста
+            const systemPrompt = `${basePrompt.roleDescription}
+
+                ТЕКУЩАЯ КАРМА: ${karma}
+                ХАРАКТЕР: ${basePrompt.character}
+
+                ПРАВИЛА ПОВЕДЕНИЯ:
+                ${basePrompt.rules}
+
+                ПРИМЕРЫ ФРАЗ:
+                ${basePrompt.phrases}
+
+                ИСТОРИЯ ПОСЛЕДНИХ СООБЩЕНИЙ:
+                ${messageHistory}
+
+                ПОСЛЕДНЕЕ СООБЩЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ: "${lastMessage}"
+
+                ${basePrompt.instruction}
+
+                ОТВЕТЬ НА СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ: "${lastMessage}"`;
 
             const chatSession = this.model.startChat({
-                generationConfig: this.generationConfig,
-                history: [
-                    {
-                        role: "user",
-                        parts: [{ text: actualPrompt }]
-                    },
-                    {
-                        role: "model",
-                        parts: [{ text: basePrompt.example }]
-                    }
-                ]
+                generationConfig: this.generationConfig
             });
 
-            // Добавляем контекст беседы если он есть
-            if (context) {
-                await chatSession.sendMessage(`КОНТЕКСТ БЕСЕДЫ:\n${context}`);
-            }
+            // Отправляем системный промпт
+            await chatSession.sendMessage({
+                role: "user",
+                parts: [{ text: systemPrompt }]
+            });
 
+            // Отправляем пример ответа
+            await chatSession.sendMessage({
+                role: "model",
+                parts: [{ text: basePrompt.example }]
+            });
+
+            // Отправляем сообщение пользователя и получаем ответ
             const result = await chatSession.sendMessage(lastMessage);
             let response = result.response.text();
 
-            // Обрабатываем маты в зависимости от кармы
             if (karma <= -500) {
                 response = this.karmaService.replaceSwearWords(response, true);
             }
 
             return response;
-
         } catch (error) {
             console.error('Gemini continuation error:', error);
             return "Гусь молчит...";

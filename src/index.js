@@ -2,7 +2,9 @@ const { Telegraf, session } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
+const { SettingsHandler } = require('./handlers/settingsHandler');
 const config = require('./config');
+const { Markup } = require('telegraf');
 
 // Настройки для бота
 const botOptions = {
@@ -19,11 +21,12 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
 const messageGenerator = new MessageGenerator(supabase);
+const settingsHandler = new SettingsHandler(supabase);
 
-// Хранение состояния ожидания ввода вероятности
+// Хранение состояния ожидания ввода
 let awaitingProbability = false;
 let awaitingReactionProbability = false;
-let awaitingSwearProbability = false;
+let awaitingKarmaChange = false;
 
 // Добавим обработку разрыва соединения
 let isConnected = true;
@@ -52,7 +55,6 @@ async function reconnect() {
 // Добавляем функцию handleCallback перед регистрацией обработчиков
 async function handleCallback(ctx, action) {
     try {
-        // Проверяем доступ
         if (ctx.from.username.toLowerCase() !== 'umbrellla777') {
             await ctx.answerCbQuery('Только @Umbrellla777 может использовать эти кнопки');
             return;
@@ -79,14 +81,13 @@ async function handleCallback(ctx, action) {
                 );
                 break;
 
-            case 'toggle_swears':
-                awaitingSwearProbability = true;
-                await ctx.answerCbQuery('Введите вероятность матов');
+            case 'change_karma':
+                awaitingKarmaChange = true;
+                await ctx.answerCbQuery('Введите новое значение кармы');
+                const currentKarma = await settingsHandler.karmaService.getKarma(ctx.chat.id);
                 await ctx.reply(
-                    '🤬 Введите вероятность использования матов (от 0 до 100%).\n' +
-                    'Например: 50 - маты будут в 50% ответов\n' +
-                    '0 - маты отключены\n' +
-                    'Текущее значение: ' + config.SWEAR_PROBABILITY + '%'
+                    '⚖️ Введите новое значение кармы (от -1000 до 1000).\n' +
+                    'Текущее значение: ' + currentKarma
                 );
                 break;
 
@@ -182,7 +183,7 @@ bot.on('message_reaction', async (ctx) => {
 });
 
 // Обработка новых сообщений
-bot.on('text', async (ctx) => {
+bot.on('message', async (ctx) => {
     try {
         // Проверяем, не был ли чат обновлен до супергруппы
         if (ctx.message?.migrate_to_chat_id) {
@@ -199,67 +200,84 @@ bot.on('text', async (ctx) => {
             const keyboard = {
                 inline_keyboard: [
                     [
-                        { text: '⚡️ Частота ответа', callback_data: 'set_probability' },
-                        { text: '😎 Частота реакций', callback_data: 'set_reaction_probability' }
+                        { text: '🎯 Вероятность ответа', callback_data: 'set_probability' },
+                        { text: '😎 Вероятность реакций', callback_data: 'set_reaction_probability' }
                     ],
                     [
-                        { text: '🤬 Частота матов', callback_data: 'toggle_swears' }
+                        { text: '⚖️ Изменить карму', callback_data: 'change_karma' }
                     ],
                     [
-                        { text: '🗑 Очистить память', callback_data: 'clear_db' }
+                        { text: '🗑 Очистить базу', callback_data: 'clear_db' }
                     ]
                 ]
             };
+
+            const karma = await settingsHandler.karmaService.getKarma(ctx.chat.id);
+            const characterType = settingsHandler.karmaService.getCharacterType(karma);
 
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
                 `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
-                `Вероятность матов: ${config.SWEAR_PROBABILITY}%`,
+                `Текущая карма: ${karma}\n` +
+                `Характер: ${characterType.name}`,
                 { reply_markup: keyboard }
             );
             return;
         }
 
-        // Проверяем, ожидаем ли ввод вероятности ответов
-        if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
-                config.RESPONSE_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
-                awaitingProbability = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
-                return;
+        // Проверяем ввод новых значений
+        if (ctx.message.from.username.toLowerCase() === 'umbrellla777') {
+            if (awaitingProbability) {
+                const prob = parseInt(ctx.message.text);
+                if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+                    config.RESPONSE_PROBABILITY = prob;
+                    await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
+                    awaitingProbability = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                    return;
+                }
             }
-        }
 
-        // Добавляем проверку для вероятности реакций
-        if (awaitingReactionProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
-                config.REACTION_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
-                awaitingReactionProbability = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
-                return;
+            if (awaitingReactionProbability) {
+                const prob = parseInt(ctx.message.text);
+                if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+                    config.REACTION_PROBABILITY = prob;
+                    await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
+                    awaitingReactionProbability = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                    return;
+                }
             }
-        }
 
-        // Проверяем ввод вероятности матов
-        if (awaitingSwearProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 0 && prob <= 100) {
-                config.SWEAR_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность матов установлена на ${prob}%`);
-                awaitingSwearProbability = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 0 до 100');
-                return;
+            // Обработка изменения кармы
+            if (awaitingKarmaChange) {
+                const newKarma = parseInt(ctx.message.text);
+                if (!isNaN(newKarma) && newKarma >= -1000 && newKarma <= 1000) {
+                    const result = await settingsHandler.karmaService.updateKarma(
+                        ctx.chat.id, 
+                        newKarma - await settingsHandler.karmaService.getKarma(ctx.chat.id)
+                    );
+                    
+                    if (result.levelChanged) {
+                        await ctx.reply(
+                            `✨ Уровень кармы изменился!\n` +
+                            `Новый уровень: ${result.newLevel.name}\n` +
+                            `Особенности: ${result.newLevel.traits.join(', ')}`
+                        );
+                    } else {
+                        await ctx.reply(`✅ Карма установлена на ${newKarma}`);
+                    }
+                    awaitingKarmaChange = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
+                    return;
+                }
             }
         }
 
@@ -347,8 +365,11 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопок с быстрым ответом
 bot.action('set_probability', ctx => handleCallback(ctx, 'set_probability'));
 bot.action('set_reaction_probability', ctx => handleCallback(ctx, 'set_reaction_probability'));
-bot.action('toggle_swears', ctx => handleCallback(ctx, 'toggle_swears'));
+bot.action('change_karma', ctx => handleCallback(ctx, 'change_karma'));
 bot.action('clear_db', ctx => handleCallback(ctx, 'clear_db'));
+
+// Настраиваем обработчики кармы
+settingsHandler.setupHandlers(bot);
 
 // И добавим обработку ошибок
 bot.catch((err, ctx) => {
@@ -402,6 +423,51 @@ process.once('SIGINT', () => {
 process.once('SIGTERM', () => {
     console.log('SIGTERM received, shutting down...');
     bot.stop('SIGTERM');
+});
+
+// Добавляем обработчики для кнопок кармы
+bot.action('karma_up_100', async (ctx) => {
+    await settingsHandler.handleKarmaChange(ctx, 100);
+});
+
+bot.action('karma_down_100', async (ctx) => {
+    await settingsHandler.handleKarmaChange(ctx, -100);
+});
+
+bot.action('karma_reset', async (ctx) => {
+    const chatId = ctx.chat.id;
+    await settingsHandler.karmaService.updateKarma(chatId, -await settingsHandler.karmaService.getKarma(chatId));
+    await handleCallback(ctx, 'change_karma');
+});
+
+bot.action('back_to_settings', async (ctx) => {
+    // Возвращаемся к основному меню настроек
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: '🎯 Вероятность ответа', callback_data: 'set_probability' },
+                { text: '😎 Вероятность реакций', callback_data: 'set_reaction_probability' }
+            ],
+            [
+                { text: '⚖️ Изменить карму', callback_data: 'change_karma' }
+            ],
+            [
+                { text: '🗑 Очистить базу', callback_data: 'clear_db' }
+            ]
+        ]
+    };
+
+    const karma = await settingsHandler.karmaService.getKarma(ctx.chat.id);
+    const characterType = settingsHandler.karmaService.getCharacterType(karma);
+
+    await ctx.editMessageText(
+        `Текущие настройки Полуумного Гуся:\n` +
+        `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
+        `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+        `Текущая карма: ${karma}\n` +
+        `Характер: ${characterType.name}`,
+        { reply_markup: keyboard }
+    );
 });
 
 // Запускаем бота

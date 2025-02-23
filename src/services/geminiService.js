@@ -1,10 +1,27 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const config = require('../config');
+const {
+    GoogleGenerativeAI,
+    HarmCategory,
+    HarmBlockThreshold,
+} = require("@google/generative-ai");
+const { PROMPTS } = require('../config/prompts');
+const { KarmaService } = require('./karmaService');
 
 class GeminiService {
     constructor() {
-        this.genAI = new GoogleGenerativeAI(config.GEMINI.API_KEY);
-        this.model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        this.model = this.genAI.getGenerativeModel({
+            model: "gemini-2.0-flash", // Используем новую модель
+        });
+
+        // Обновленная конфигурация
+        this.generationConfig = {
+            temperature: 1,      // Максимальная креативность
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192
+        };
+
+        this.karmaService = new KarmaService();
     }
 
     async analyzeMessage(text) {
@@ -74,80 +91,50 @@ class GeminiService {
         }
     }
 
-    async generateContinuation(basePhrase, context, lastMessage, swearProbability, swearPhrases = []) {
+    async generateContinuation(basePhrase, context, lastMessage, karma) {
         try {
-            const useSwears = Math.random() * 100 < swearProbability;
+            // Определяем уровень кармы и соответствующий промпт
+            const karmaLevel = Math.floor(karma / 100) * 100;
+            const characterType = this.karmaService.getCharacterType(karma);
             
-            // Разбиваем контекст на сообщения
-            const recentMessages = context.split('\n')
-                .filter(msg => msg.trim().length > 0)
-                .slice(-5) // Берем последние 5 сообщений для лучшего фокуса
-                .map(msg => msg.trim());
+            // Получаем базовый промпт для уровня кармы
+            let basePrompt = PROMPTS[karmaLevel] || PROMPTS['0'];
+            
+            // Заменяем пример сообщения на реальное
+            const actualPrompt = basePrompt.prompt.replace(
+                'ПОСЛЕДНЕЕ СООБЩЕНИЕ: "Гусь, как дела?"',
+                `ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"`
+            );
 
-            // Анализируем последнее сообщение
-            const analysisPrompt = `Проанализируй сообщение пользователя и определи:
-                Сообщение: "${lastMessage}"
-
-                1. Тип сообщения: [вопрос/утверждение/шутка/оскорбление]
-                2. Эмоциональный тон: [позитивный/негативный/нейтральный/саркастичный]
-                3. Тема: [о чем говорит пользователь]
-                4. Ожидаемый ответ: [что пользователь хочет услышать]
-                
-                Отвечай строго в формате:
-                ТИП: [тип]
-                ТОН: [тон]
-                ТЕМА: [тема]
-                ОЖИДАНИЕ: [ожидание]`;
-
-            const analysis = await this.model.generateContent({
-                contents: [{ parts: [{ text: analysisPrompt }] }]
+            const chatSession = this.model.startChat({
+                generationConfig: this.generationConfig,
+                history: [
+                    {
+                        role: "user",
+                        parts: [{ text: actualPrompt }]
+                    },
+                    {
+                        role: "model",
+                        parts: [{ text: basePrompt.example }]
+                    }
+                ]
             });
 
-            // Генерируем ответ с учетом анализа
-            const responsePrompt = `Ты - полуумный гусь в Telegram-чате. Тебе нужно ответить на сообщение.
+            // Добавляем контекст беседы если он есть
+            if (context) {
+                await chatSession.sendMessage(`КОНТЕКСТ БЕСЕДЫ:\n${context}`);
+            }
 
-                ТВОЙ ХАРАКТЕР:
-                - Саркастичный и ироничный
-                - Считаешь себя умнее всех
-                - Любишь подкалывать собеседников
-                - Отвечаешь с юмором, но по делу
-                - Используешь современный сленг
-                
-                КОНТЕКСТ БЕСЕДЫ:
-                ${recentMessages.map(msg => `- ${msg}`).join('\n')}
-                
-                ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"
-                
-                АНАЛИЗ СООБЩЕНИЯ:
-                ${analysis.response.text()}
-                
-                ПРАВИЛА ОТВЕТА:
-                1. Если это вопрос - дай конкретный, но саркастичный ответ
-                2. Если шутка - ответь более смешной шуткой
-                3. Если оскорбление - парируй с иронией
-                4. Используй сленг и современные мемы
-                5. Добавляй эмоджи где уместно
-                6. Максимум 2 предложения
-                7. Будь остроумным, но не злым
-                8. Поддерживай тему разговора
-                
-                ${useSwears ? 'Можно использовать умеренный мат' : 'Без мата'}
-                
-                Ответь одним сообщением от имени полуумного гуся.`;
+            const result = await chatSession.sendMessage(lastMessage);
+            let response = result.response.text();
 
-            const result = await this.model.generateContent({
-                contents: [{ parts: [{ text: responsePrompt }] }]
-            });
-
-            let response = result.response.text().trim();
-            
-            // Ограничиваем длину
-            const words = response.split(/\s+/);
-            if (words.length > 15) {
-                response = words.slice(0, 15).join(' ') + '...';
+            // Обрабатываем маты в зависимости от кармы
+            if (karma <= -500) {
+                response = this.karmaService.replaceSwearWords(response, true);
             }
 
             return response;
+
         } catch (error) {
             console.error('Gemini continuation error:', error);
             return "Гусь молчит...";

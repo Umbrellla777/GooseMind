@@ -14,29 +14,14 @@ class SettingsHandler {
             const karma = await this.karmaService.getKarma(chatId);
             const characterType = this.karmaService.getCharacterType(karma);
 
-            const keyboard = Markup.inlineKeyboard([
-                [
-                    Markup.button.callback('➕ Повысить карму', 'karma_up'),
-                    Markup.button.callback('➖ Понизить карму', 'karma_down')
-                ],
-                [
-                    Markup.button.callback('🔄 Сбросить карму', 'karma_reset')
-                ],
-                [
-                    Markup.button.callback('⬅️ Назад', 'back_to_settings')
-                ]
-            ]);
-
             const message = `
 📊 *Настройки кармы*
 
 Текущая карма: ${karma}
 Характер: ${characterType.name}
-Особенности: ${characterType.traits.join(', ')}
+Особенности: ${characterType.traits.join(', ')}`;
 
-_Используйте кнопки ниже для управления кармой_`;
-
-            await ctx.replyWithMarkdown(message, keyboard);
+            await ctx.replyWithMarkdown(message);
 
         } catch (error) {
             console.error('Error showing karma settings:', error);
@@ -67,26 +52,6 @@ _Используйте кнопки ниже для управления кар
     }
 
     setupHandlers(bot) {
-        // Обработчики кнопок
-        bot.action('karma_up', async (ctx) => {
-            await this.handleKarmaChange(ctx, config.KARMA_ACTIONS.POSITIVE.KIND_WORD);
-        });
-
-        bot.action('karma_down', async (ctx) => {
-            await this.handleKarmaChange(ctx, config.KARMA_ACTIONS.NEGATIVE.RUDE);
-        });
-
-        bot.action('karma_reset', async (ctx) => {
-            const chatId = ctx.chat.id;
-            await this.karmaService.updateKarma(chatId, -await this.karmaService.getKarma(chatId));
-            await this.showSettings(ctx);
-        });
-
-        bot.action('back_to_settings', async (ctx) => {
-            // Возврат к основным настройкам
-            // Здесь нужно вызвать ваш основной метод показа настроек
-        });
-
         // Команда для открытия настроек кармы
         bot.command('karma', async (ctx) => {
             await this.showSettings(ctx);

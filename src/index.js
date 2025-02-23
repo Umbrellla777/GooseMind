@@ -183,7 +183,7 @@ bot.on('message_reaction', async (ctx) => {
 });
 
 // Обработка новых сообщений
-bot.on('text', async (ctx) => {
+bot.on('message', async (ctx) => {
     try {
         // Проверяем, не был ли чат обновлен до супергруппы
         if (ctx.message?.migrate_to_chat_id) {
@@ -226,31 +226,58 @@ bot.on('text', async (ctx) => {
             return;
         }
 
-        // Проверяем, ожидаем ли ввод вероятности ответов
-        if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
-                config.RESPONSE_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
-                awaitingProbability = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
-                return;
+        // Проверяем ввод новых значений
+        if (ctx.message.from.username.toLowerCase() === 'umbrellla777') {
+            if (awaitingProbability) {
+                const prob = parseInt(ctx.message.text);
+                if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+                    config.RESPONSE_PROBABILITY = prob;
+                    await ctx.reply(`✅ Вероятность ответа установлена на ${prob}%`);
+                    awaitingProbability = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                    return;
+                }
             }
-        }
 
-        // Добавляем проверку для вероятности реакций
-        if (awaitingReactionProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
-            const prob = parseInt(ctx.message.text);
-            if (!isNaN(prob) && prob >= 1 && prob <= 100) {
-                config.REACTION_PROBABILITY = prob;
-                await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
-                awaitingReactionProbability = false;
-                return;
-            } else {
-                await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
-                return;
+            if (awaitingReactionProbability) {
+                const prob = parseInt(ctx.message.text);
+                if (!isNaN(prob) && prob >= 1 && prob <= 100) {
+                    config.REACTION_PROBABILITY = prob;
+                    await ctx.reply(`✅ Вероятность реакций установлена на ${prob}%`);
+                    awaitingReactionProbability = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от 1 до 100');
+                    return;
+                }
+            }
+
+            // Обработка изменения кармы
+            if (awaitingKarmaChange) {
+                const newKarma = parseInt(ctx.message.text);
+                if (!isNaN(newKarma) && newKarma >= -1000 && newKarma <= 1000) {
+                    const result = await settingsHandler.karmaService.updateKarma(
+                        ctx.chat.id, 
+                        newKarma - await settingsHandler.karmaService.getKarma(ctx.chat.id)
+                    );
+                    
+                    if (result.levelChanged) {
+                        await ctx.reply(
+                            `✨ Уровень кармы изменился!\n` +
+                            `Новый уровень: ${result.newLevel.name}\n` +
+                            `Особенности: ${result.newLevel.traits.join(', ')}`
+                        );
+                    } else {
+                        await ctx.reply(`✅ Карма установлена на ${newKarma}`);
+                    }
+                    awaitingKarmaChange = false;
+                    return;
+                } else {
+                    await ctx.reply('❌ Пожалуйста, введите число от -1000 до 1000');
+                    return;
+                }
             }
         }
 

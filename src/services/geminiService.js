@@ -172,13 +172,7 @@ class GeminiService {
                 contents: [{ parts: [{ text: responsePrompt }] }]
             });
 
-            let response = result.response.text().trim();
-            
-            // Ограничиваем длину
-            const words = response.split(/\s+/);
-            if (words.length > 15) {
-                response = words.slice(0, 15).join(' ') + '...';
-            }
+            const response = result.response.text().trim();
 
             return response;
         } catch (error) {

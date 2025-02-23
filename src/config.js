@@ -14,7 +14,7 @@ module.exports = {
     ], // Варианты имен бота для упоминаний
     COMMANDS: [
         { command: 'karma', description: 'Показать текущий характер гуся' },
-        { command: 'gs', description: 'Настройки гуся (только для админа)' }
+        { command: 'gs', description: 'Настройки гуся (только для доверенных лиц)' }
     ],
     CONTEXT_MESSAGE_COUNT: 15,
     REACTIONS: [

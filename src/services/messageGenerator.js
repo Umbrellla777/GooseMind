@@ -323,7 +323,7 @@ class MessageGenerator {
                 }
             }
 
-            const basePhrase = selectedPhrases.join('. ');
+            let basePhrase = selectedPhrases.join('. ');
 
             // Если нет фраз для генерации, используем заготовленные фразы
             if (!basePhrase) {

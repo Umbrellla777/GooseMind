@@ -131,47 +131,51 @@ class MessageHandler {
             /(здравствуй|добр|привет|пока|до свидания|всего хорошего)/i
         ];
 
-        // Проверяем негативные паттерны
-        for (const pattern of badPatterns) {
-            if (pattern.test(text)) {
-                if (pattern.source.includes('бля|хуй|пизд')) {
-                    karmaChange -= (Math.random() * 0.3) + 0.4; // -0.4 до -0.7
-                } else {
-                    karmaChange -= (Math.random() * 0.2) + 0.1; // -0.1 до -0.3
-                }
-            }
-        }
-
-        // Проверяем позитивные паттерны
+        // Сначала проверяем позитивные паттерны
+        let hasPositivePattern = false;
         for (const pattern of goodPatterns) {
             if (pattern.test(text)) {
+                hasPositivePattern = true;
                 if (pattern.source.includes('спасибо|благодар')) {
-                    karmaChange += (Math.random() * 0.2) + 0.2; // +0.2 до +0.4
+                    karmaChange = (Math.random() * 0.2) + 0.2; // +0.2 до +0.4
                 } else {
-                    karmaChange += 0.1; // +0.1
+                    karmaChange = 0.1; // +0.1
                 }
-                // Прерываем после первого найденного позитивного паттерна
-                // чтобы не накапливать карму за одно сообщение
-                break;
+                break; // Берем только первое совпадение
             }
         }
 
-        // Дополнительные проверки
-        if (text.length > 200) {
-            karmaChange += 0.1;
+        // Если нет позитивного паттерна, проверяем негативные
+        if (!hasPositivePattern) {
+            for (const pattern of badPatterns) {
+                if (pattern.test(text)) {
+                    if (pattern.source.includes('бля|хуй|пизд')) {
+                        karmaChange = -(Math.random() * 0.3 + 0.4); // -0.4 до -0.7
+                    } else {
+                        karmaChange = -(Math.random() * 0.2 + 0.1); // -0.1 до -0.3
+                    }
+                    break; // Берем только первое совпадение
+                }
+            }
         }
 
-        if (/^[А-ЯA-Z\s]+$/.test(text)) {
-            karmaChange -= 0.2;
+        // Дополнительные проверки только если нет явных паттернов
+        if (karmaChange === 0) {
+            if (text.length > 200) {
+                karmaChange += 0.1;
+            }
+
+            if (/^[А-ЯA-Z\s]+$/.test(text)) {
+                karmaChange -= 0.2;
+            }
+
+            // Проверка на повторяющиеся сообщения
+            const recentMessages = await this.getRecentMessages(message.chat.id, 5);
+            if (recentMessages.some(msg => msg.text === message.text)) {
+                karmaChange -= 0.3;
+            }
         }
 
-        // Проверка на повторяющиеся сообщения
-        const recentMessages = await this.getRecentMessages(message.chat.id, 5);
-        if (recentMessages.some(msg => msg.text === message.text)) {
-            karmaChange -= 0.3;
-        }
-
-        // Добавляем логирование для отладки
         console.log('Karma change analysis:', {
             text,
             karmaChange,

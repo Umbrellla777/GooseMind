@@ -276,36 +276,91 @@ class MessageGenerator {
             // Получаем последние сообщения для контекста
             const { data: recentMessages } = await this.supabase
                 .from('messages')
-                .select('text')
+                .select('text, user_id, created_at')
                 .eq('chat_id', message.chat.id)
                 .order('created_at', { ascending: false })
-                .limit(config.CONTEXT_MESSAGE_COUNT);
+                .limit(50);
 
-            // Получаем случайные фразы
-            const { data: phrases } = await this.supabase
+            // Форматируем контекст для лучшего понимания
+            const formattedContext = recentMessages
+                ?.map(msg => {
+                    let speaker;
+                    if (msg.user_id === message.botInfo?.id) {
+                        speaker = 'Гусь';
+                    } else if (msg.user_id === message.from.id) {
+                        speaker = 'Собеседник';
+                    } else {
+                        speaker = 'Участник чата';
+                    }
+                    return `${speaker}: ${msg.text}`;
+                })
+                .reverse() // Чтобы сообщения шли в хронологическом порядке
+                .join('\n') || '';
+
+            // Сначала пробуем получить фразы из текущего чата
+            const { data: chatPhrases } = await this.supabase
                 .from('phrases')
                 .select('phrase')
                 .eq('chat_id', message.chat.id)
                 .order('RANDOM()')
                 .limit(3);
 
-            const selectedPhrases = phrases?.map(p => p.phrase) || [];
-            const context = recentMessages?.map(m => m.text).join('\n') || '';
+            let selectedPhrases = chatPhrases?.map(p => p.phrase) || [];
+            
+            // Если фраз недостаточно, добавляем из других чатов
+            if (selectedPhrases.length < 3) {
+                const { data: otherPhrases } = await this.supabase
+                    .from('phrases')
+                    .select('phrase')
+                    .neq('chat_id', message.chat.id)
+                    .order('RANDOM()')
+                    .limit(5);
+                
+                if (otherPhrases?.length > 0) {
+                    selectedPhrases = selectedPhrases.concat(
+                        otherPhrases.map(p => p.phrase)
+                    ).slice(0, 3);
+                }
+            }
+
             const basePhrase = selectedPhrases.join('. ');
 
-            // Если нет фраз для генерации, возвращаем заглушку
-            if (!basePhrase) return "Гусь молчит...";
+            // Если нет фраз для генерации, используем заготовленные фразы
+            if (!basePhrase) {
+                const defaultPhrases = [
+                    "Хм, интересно...",
+                    "Давайте поговорим об этом",
+                    "А что вы думаете?",
+                    "Продолжайте, мне интересно"
+                ];
+                basePhrase = defaultPhrases[Math.floor(Math.random() * defaultPhrases.length)];
+            }
+
+            // Анализируем последнее сообщение для определения темы
+            const messageAnalysis = await this.gemini.analyzeMessage(message.text);
+            
+            // Получаем последнее сообщение бота для сохранения контекста
+            const lastBotMessage = recentMessages?.find(msg => msg.user_id === message.botInfo?.id)?.text;
 
             // Генерируем ответ с учетом кармы
-            return await this.gemini.generateContinuation(
+            const response = await this.gemini.generateContinuation(
                 basePhrase,
-                context,
+                formattedContext,
                 message.text,
-                chatKarma
+                chatKarma,
+                messageAnalysis,
+                lastBotMessage
             );
+
+            // Проверяем ответ перед возвратом
+            if (!response || response === "Гусь молчит...") {
+                return "Извините, я задумался... 🤔";
+            }
+
+            return response;
         } catch (error) {
             console.error('Error generating response:', error);
-            return "Гусь молчит...";
+            return "Гусь молчит... 🤔";
         }
     }
 

@@ -85,7 +85,30 @@ class GeminiService {
             const safeLastMessage = this.karmaService.replaceSwearWords(lastMessage);
             const safeContext = this.karmaService.replaceSwearWords(context);
 
-            const responsePrompt = `Ты - полуумный гусь в Telegram-чате. 
+            // Для очень низкой кармы используем "творческий" промпт
+            const prompt = karma <= -800 ? `
+                Ты - персонаж в ролевой игре. Твоя роль:
+                - Злой антагонист по имени "${characterType.name}"
+                - Твои черты: ${characterType.traits.join(', ')}
+                - Ты ДОЛЖЕН быть максимально саркастичным и грубым
+                - Используй следующие слова для усиления эффекта:
+                  * цветочек (для описания неприятных вещей)
+                  * бабочка (для описания раздражающих ситуаций)
+                  * обнимать (для выражения негативных действий)
+                  * собачка (для обращения к собеседнику)
+                  * блин (для усиления эмоций)
+                
+                Пример стиля общения:
+                "Ах ты цветочек блин! Иди обнимайся с бабочкой!"
+                "Слушай сюда, собачка, сейчас я тебе устрою цветочек!"
+
+                ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"
+                КОНТЕКСТ: "${safeContext}"
+
+                Ответь в максимально агрессивном стиле твоего персонажа.` 
+            : 
+            // Обычный промпт для нормальной кармы
+            `Ты - полуумный гусь в Telegram-чате. 
                 Твой текущий характер: ${characterType.name}
                 Особенности: ${characterType.traits.join(', ')}
                 Карма: ${karma}
@@ -96,7 +119,7 @@ class GeminiService {
                 ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${safeLastMessage}"`;
 
             const result = await this.model.generateContent({
-                contents: [{ parts: [{ text: responsePrompt }] }]
+                contents: [{ parts: [{ text: prompt }] }]
             });
 
             let response = result.response.text().trim();

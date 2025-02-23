@@ -40,7 +40,7 @@ module.exports = {
     },
     GEMINI: {
         API_KEY: process.env.GEMINI_API_KEY,
-        MODEL: 'gemini-pro'
+        MODEL: 'gemini-2.0-flash'
     },
     DOH_SERVER: process.env.DOH_SERVER,
     KARMA_LEVELS: {
@@ -48,7 +48,7 @@ module.exports = {
         900: { name: 'Просветленный', traits: ['спокойный', 'понимающий'] },
         800: { name: 'Миротворец', traits: ['дружелюбный', 'отзывчивый'] },
         700: { name: 'Добряк', traits: ['веселый', 'позитивный'] },
-        600: { name: 'Хороший Гусь', traits: ['приятный', 'вежливый'] },
+        600: { name: 'Хороший парень', traits: ['приятный', 'вежливый'] },
         500: { name: 'Приятный собеседник', traits: ['общительный'] },
         400: { name: 'Нормальный гусь', traits: ['обычный'] },
         300: { name: 'Шутник', traits: ['ироничный'] },

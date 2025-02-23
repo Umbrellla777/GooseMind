@@ -337,10 +337,13 @@ bot.on('text', async (ctx) => {
                 const oldLevel = Math.floor(karmaUpdate.oldKarma / 100) * 100;
                 const newLevel = Math.floor(karmaUpdate.newKarma / 100) * 100;
                 if (oldLevel !== newLevel) {
-                    const characteristic = getKarmaCharacteristic(newLevel);
+                    // Получаем характеристики для обоих уровней
+                    const oldCharacteristic = config.KARMA_LEVELS[oldLevel];
+                    const newCharacteristic = config.KARMA_LEVELS[newLevel];
                     await ctx.reply(
-                        `Карма чата ${karmaUpdate.newKarma > karmaUpdate.oldKarma ? 'повысилась' : 'понизилась'} ` +
-                        `до уровня ${newLevel}! Теперь это: ${characteristic}`
+                        `🎭 Характер гуся ${karmaUpdate.newKarma > karmaUpdate.oldKarma ? 'улучшился' : 'ухудшился'}:\n` +
+                        `${oldCharacteristic} ➡️ ${newCharacteristic}\n` +
+                        `Текущая карма: ${karmaUpdate.newKarma}`
                     );
                 }
             }

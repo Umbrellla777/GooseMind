@@ -54,23 +54,24 @@ class GeminiService {
         const format = isIncrease ? this.karmaChangeFormat.increase : this.karmaChangeFormat.decrease;
         const absChange = Math.abs(change);
 
-        let message = '';
-        if (absChange >= 500) {
-            message = format.huge;
-        } else if (absChange >= 200) {
-            message = format.large;
-        } else if (absChange >= 100) {
-            message = format.medium;
-        } else if (absChange >= 50) {
-            message = format.small;
-        }
+        // Определяем старый и новый уровни (сотни)
+        const oldLevel = Math.floor(oldKarma / 100) * 100;
+        const newLevel = Math.floor(newKarma / 100) * 100;
+        const levelChanged = oldLevel !== newLevel;
 
-        if (message) {
-            const oldLevel = this.getKarmaLevel(oldKarma);
-            const newLevel = this.getKarmaLevel(newKarma);
-            if (oldLevel !== newLevel) {
-                message += `\n${this.getKarmaTransitionMessage(oldLevel, newLevel)}`;
+        let message = '';
+        // Показываем сообщение об изменении кармы только при смене уровня
+        if (levelChanged) {
+            if (absChange >= 500) {
+                message = format.huge;
+            } else if (absChange >= 200) {
+                message = format.large;
+            } else if (absChange >= 100) {
+                message = format.medium;
+            } else if (absChange >= 50) {
+                message = format.small;
             }
+            message += `\n${this.getKarmaTransitionMessage(oldLevel, newLevel)}`;
         }
 
         return message;
@@ -81,10 +82,12 @@ class GeminiService {
     }
 
     getKarmaTransitionMessage(oldLevel, newLevel) {
+        const oldCharacteristic = config.KARMA_LEVELS[oldLevel];
+        const newCharacteristic = config.KARMA_LEVELS[newLevel];
         if (oldLevel < newLevel) {
-            return `🎭 Характер гуся улучшился: ${this.karmaPrompts[oldLevel]} ➡️ ${this.karmaPrompts[newLevel]}`;
+            return `🎭 Характер гуся улучшился:\n${oldCharacteristic} ➡️ ${newCharacteristic}`;
         } else {
-            return `🎭 Характер гуся ухудшился: ${this.karmaPrompts[oldLevel]} ➡️ ${this.karmaPrompts[newLevel]}`;
+            return `🎭 Характер гуся ухудшился:\n${oldCharacteristic} ➡️ ${newCharacteristic}`;
         }
     }
 

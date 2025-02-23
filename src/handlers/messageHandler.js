@@ -99,6 +99,10 @@ class MessageHandler {
         if (!message?.text) return 0;
         const text = message.text.toLowerCase();
 
+        let karmaChange = 0;
+        const MAX_NEGATIVE_CHANGE = -10;
+        const MAX_POSITIVE_CHANGE = 7;
+
         // Паттерны для снижения кармы
         const badPatterns = [
             // Оскорбления и агрессия
@@ -127,16 +131,14 @@ class MessageHandler {
             /(здравствуйте|доброе|привет|до свидания|всего доброго)/i
         ];
 
-        let karmaChange = 0;
-
         // Проверяем негативные паттерны
         for (const pattern of badPatterns) {
             if (pattern.test(text)) {
                 // Более серьезные нарушения снижают карму сильнее
                 if (pattern.source.includes('бля|хуй|пизд')) {
-                    karmaChange -= Math.floor(Math.random() * 5) + 6; // -6 до -10
+                    karmaChange -= Math.floor(Math.random() * 3) + 4; // -4 до -6
                 } else {
-                    karmaChange -= Math.floor(Math.random() * 3) + 1; // -1 до -3
+                    karmaChange -= Math.floor(Math.random() * 2) + 1; // -1 до -2
                 }
             }
         }
@@ -146,9 +148,9 @@ class MessageHandler {
             if (pattern.test(text)) {
                 // Разные типы хороших сообщений дают разный бонус
                 if (pattern.source.includes('спасибо|благодарю')) {
-                    karmaChange += Math.floor(Math.random() * 3) + 3; // +3 до +5
+                    karmaChange += Math.floor(Math.random() * 2) + 2; // +2 до +3
                 } else {
-                    karmaChange += Math.floor(Math.random() * 2) + 1; // +1 до +2
+                    karmaChange += 1; // +1
                 }
             }
         }
@@ -170,8 +172,12 @@ class MessageHandler {
             karmaChange -= 3; // Штраф за повторы
         }
 
-        // Ограничиваем максимальное изменение кармы за одно сообщение
-        return Math.max(-10, Math.min(7, karmaChange));
+        // Применяем ограничения на изменение кармы
+        if (karmaChange < 0) {
+            return Math.max(MAX_NEGATIVE_CHANGE, karmaChange);
+        } else {
+            return Math.min(MAX_POSITIVE_CHANGE, karmaChange);
+        }
     }
 
     async getRecentMessages(chatId, limit = 5) {

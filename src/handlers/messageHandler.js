@@ -100,8 +100,8 @@ class MessageHandler {
         const text = message.text.toLowerCase();
 
         let karmaChange = 0;
-        const MAX_NEGATIVE_CHANGE = -10;
-        const MAX_POSITIVE_CHANGE = 7;
+        const MAX_NEGATIVE_CHANGE = -1;
+        const MAX_POSITIVE_CHANGE = 0.7;
 
         // Паттерны для снижения кармы
         const badPatterns = [
@@ -136,9 +136,9 @@ class MessageHandler {
             if (pattern.test(text)) {
                 // Более серьезные нарушения снижают карму сильнее
                 if (pattern.source.includes('бля|хуй|пизд')) {
-                    karmaChange -= Math.floor(Math.random() * 3) + 4; // -4 до -6
+                    karmaChange -= (Math.random() * 0.3) + 0.4; // -0.4 до -0.7
                 } else {
-                    karmaChange -= Math.floor(Math.random() * 2) + 1; // -1 до -2
+                    karmaChange -= (Math.random() * 0.2) + 0.1; // -0.1 до -0.3
                 }
             }
         }
@@ -146,11 +146,10 @@ class MessageHandler {
         // Проверяем позитивные паттерны
         for (const pattern of goodPatterns) {
             if (pattern.test(text)) {
-                // Разные типы хороших сообщений дают разный бонус
                 if (pattern.source.includes('спасибо|благодарю')) {
-                    karmaChange += Math.floor(Math.random() * 2) + 2; // +2 до +3
+                    karmaChange += (Math.random() * 0.2) + 0.2; // +0.2 до +0.4
                 } else {
-                    karmaChange += 1; // +1
+                    karmaChange += 0.1; // +0.1
                 }
             }
         }
@@ -158,18 +157,18 @@ class MessageHandler {
         // Дополнительные проверки
         if (text.length > 200) {
             // Длинные осмысленные сообщения немного повышают карму
-            karmaChange += 1;
+            karmaChange += 0.1;
         }
 
         if (/^[А-ЯA-Z\s]+$/.test(text)) {
             // Капс снижает карму
-            karmaChange -= 2;
+            karmaChange -= 0.2;
         }
 
         // Проверка на повторяющиеся сообщения
         const recentMessages = await this.getRecentMessages(message.chat.id, 5);
         if (recentMessages.some(msg => msg.text === message.text)) {
-            karmaChange -= 3; // Штраф за повторы
+            karmaChange -= 0.3; // Штраф за повторы
         }
 
         // Применяем ограничения на изменение кармы

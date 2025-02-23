@@ -286,7 +286,7 @@ bot.on('text', async (ctx) => {
                 await ctx.reply(
                     `🎭 Характер гуся в этом чате:\n` +
                     `${characteristic}\n` +
-                    `Текущая карма: ${currentKarma.toFixed(1)}`
+                    `Текущая карма: ${Math.round(currentKarma * 10) / 10}`
                 );
                 return;
             } catch (error) {

@@ -195,28 +195,39 @@ class MessageHandler {
     }
 
     async updateKarmaForMessage(message) {
-        if (!message?.chat?.id) return null;
+        try {
+            const karmaChange = await this.analyzeMessageForKarma(message);
+            if (karmaChange !== 0) {
+                const { data: currentKarma } = await this.supabase
+                    .from('chat_karma')
+                    .select('karma_value')
+                    .eq('chat_id', message.chat.id)
+                    .single();
 
-        const karmaChange = await this.analyzeMessageForKarma(message);
-        if (karmaChange === 0) return null;
+                const oldKarma = currentKarma?.karma_value || 0;
+                // Округляем до одного знака после запятой
+                const newKarma = Math.round(Math.max(-1000, Math.min(1000, oldKarma + karmaChange)) * 10) / 10;
 
-        const { data: currentKarma } = await this.supabase
-            .from('chat_karma')
-            .select('karma_value')
-            .eq('chat_id', message.chat.id)
-            .single();
+                const { error } = await this.supabase
+                    .from('chat_karma')
+                    .upsert({
+                        chat_id: message.chat.id,
+                        karma_value: newKarma,
+                        last_update: new Date().toISOString()
+                    });
 
-        const newKarma = Math.max(-1000, Math.min(1000, (currentKarma?.karma_value || 0) + karmaChange));
+                if (error) throw error;
 
-        await this.supabase
-            .from('chat_karma')
-            .upsert({
-                chat_id: message.chat.id,
-                karma_value: newKarma,
-                last_update: new Date().toISOString()
-            });
-
-        return { oldKarma: currentKarma?.karma_value || 0, newKarma };
+                return {
+                    oldKarma: parseFloat(oldKarma),
+                    newKarma: parseFloat(newKarma)
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error('Error updating karma:', error);
+            return null;
+        }
     }
 }
 

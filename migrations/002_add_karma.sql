@@ -1,8 +1,0 @@
-CREATE TABLE IF NOT EXISTS chat_karma (
-    chat_id BIGINT PRIMARY KEY,
-    karma INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_chat_karma_karma ON chat_karma(karma); 

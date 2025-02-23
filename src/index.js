@@ -95,7 +95,7 @@ async function updateChatKarma(chatId, change) {
             await bot.telegram.sendMessage(chatId, karmaChangeMessage);
         }
 
-        return newKarma;
+        return null;
     } catch (error) {
         console.error('Error updating karma:', error);
         return null;
@@ -328,11 +328,35 @@ bot.on('text', async (ctx) => {
         if (awaitingKarma && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
             const karma = parseInt(ctx.message.text);
             if (!isNaN(karma) && karma >= -1000 && karma <= 1000) {
-                const notification = await updateChatKarma(ctx.chat.id, karma);
-                const characteristic = getKarmaCharacteristic(karma);
-                await ctx.reply(`Карма чата установлена на ${karma}. Характеристика: ${characteristic}`);
-                if (notification) {
-                    await ctx.reply(notification);
+                // Получаем текущую карму
+                const currentKarma = await getChatKarma(ctx.chat.id);
+                
+                // Обновляем карму напрямую, без вычисления изменения
+                const { error } = await supabase
+                    .from('chat_karma')
+                    .upsert({ 
+                        chat_id: ctx.chat.id, 
+                        karma_value: karma,
+                        last_update: new Date().toISOString()
+                    });
+
+                if (error) throw error;
+
+                // Отправляем уведомление об изменении характера только если сменился уровень
+                const oldLevel = Math.floor(currentKarma / 100) * 100;
+                const newLevel = Math.floor(karma / 100) * 100;
+                
+                if (oldLevel !== newLevel) {
+                    const oldCharacteristic = config.KARMA_LEVELS[oldLevel];
+                    const newCharacteristic = config.KARMA_LEVELS[newLevel];
+                    await ctx.reply(
+                        `🎭 Характер гуся ${karma > currentKarma ? 'улучшился' : 'ухудшился'}:\n` +
+                        `${oldCharacteristic} ➡️ ${newCharacteristic}\n` +
+                        `Установлена карма: ${karma}`
+                    );
+                } else {
+                    const characteristic = getKarmaCharacteristic(karma);
+                    await ctx.reply(`Карма чата установлена на ${karma}. Характеристика: ${characteristic}`);
                 }
                 awaitingKarma = false;
                 return;
@@ -353,8 +377,10 @@ bot.on('text', async (ctx) => {
             // Обновляем карму на основе сообщения
             const karmaUpdate = await messageHandler.updateKarmaForMessage(ctx.message);
             if (karmaUpdate) {
+                // Отправляем уведомление об изменении характера только если сменился уровень
                 const oldLevel = Math.floor(karmaUpdate.oldKarma / 100) * 100;
                 const newLevel = Math.floor(karmaUpdate.newKarma / 100) * 100;
+                
                 if (oldLevel !== newLevel) {
                     // Получаем характеристики для обоих уровней
                     const oldCharacteristic = config.KARMA_LEVELS[oldLevel];

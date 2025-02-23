@@ -278,6 +278,24 @@ bot.on('text', async (ctx) => {
             return;
         }
 
+        // Проверяем команды настроек гуся
+        if (ctx.message.text === '/karma') {
+            try {
+                const currentKarma = await getChatKarma(ctx.chat.id);
+                const characteristic = config.KARMA_LEVELS[Math.floor(currentKarma / 100) * 100];
+                await ctx.reply(
+                    `🎭 Характер гуся в этом чате:\n` +
+                    `${characteristic}\n` +
+                    `Текущая карма: ${currentKarma.toFixed(1)}`
+                );
+                return;
+            } catch (error) {
+                console.error('Error getting karma:', error);
+                await ctx.reply('Произошла ошибка при получении кармы 😢');
+                return;
+            }
+        }
+
         // Проверяем, ожидаем ли ввод вероятности ответов
         if (awaitingProbability && ctx.message.from.username.toLowerCase() === 'umbrellla777') {
             const prob = parseInt(ctx.message.text);
@@ -450,6 +468,9 @@ async function startBot() {
         await bot.telegram.deleteWebhook({ 
             drop_pending_updates: true 
         });
+
+        // Устанавливаем команды бота
+        await bot.telegram.setMyCommands(config.COMMANDS);
 
         // Явно указываем все типы обновлений
         await bot.launch({

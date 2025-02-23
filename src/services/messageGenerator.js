@@ -264,88 +264,39 @@ class MessageGenerator {
 
             const chatKarma = karmaData?.karma_value || 0;
 
-            return await this.generateLocalResponse(message);
+            return await this.generateLocalResponse(message, chatKarma);
         } catch (error) {
             console.error('Error in generateResponse:', error);
             return this.generateFallbackResponse(message.text);
         }
     }
 
-    async generateLocalResponse(message) {
+    async generateLocalResponse(message, chatKarma = 0) {
         try {
-            // Получаем все фразы из текущего чата
-            const { data: chatPhrases, error: phrasesError } = await this.supabase
-                .from('phrases')
-                .select('phrase')
-                .eq('chat_id', message.chat.id);
-
-            if (phrasesError) {
-                console.error('Ошибка получения фраз:', phrasesError);
-                return "Гусь молчит...";
-            }
-
-            // Если в чате мало фраз, добавляем из других чатов
-            let allPhrases = chatPhrases || [];
-            if (allPhrases.length < 20) {
-                const { data: otherPhrases } = await this.supabase
-                    .from('phrases')
-                    .select('phrase')
-                    .neq('chat_id', message.chat.id);
-
-                if (otherPhrases) {
-                    allPhrases = allPhrases.concat(otherPhrases);
-                }
-            }
-
-            if (allPhrases.length === 0) return "Гусь молчит...";
-
-            // Получаем фразы с матами если нужно
-            let swearPhrases = [];
-            if (config.SWEAR_PROBABILITY > 0) {
-                const { data: swears } = await this.supabase
-                    .from('phrases')
-                    .select('phrase')
-                    .or('phrase.ilike.%хуй%,phrase.ilike.%пизд%,phrase.ilike.%ебл%,phrase.ilike.%бля%');
-                
-                if (swears?.length > 0) {
-                    swearPhrases = swears.map(s => s.phrase);
-                }
-            }
-
-            // Выбираем 10 случайных фраз
-            const phraseCount = 10;
-            const selectedPhrases = [];
-
-            // Перемешиваем массив фраз
-            for (let i = allPhrases.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [allPhrases[i], allPhrases[j]] = [allPhrases[j], allPhrases[i]];
-            }
-
-            // Выбираем случайные фразы
-            while (selectedPhrases.length < phraseCount && allPhrases.length > 0) {
-                const phrase = allPhrases[0].phrase;
-                if (!message.text.toLowerCase().includes(phrase.toLowerCase())) {
-                    selectedPhrases.push(phrase);
-                }
-                allPhrases.shift();
-            }
-
-            // Получаем контекст из последних сообщений
+            // Получаем последние сообщения для контекста
             const { data: recentMessages } = await this.supabase
                 .from('messages')
                 .select('text')
                 .eq('chat_id', message.chat.id)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(config.CONTEXT_MESSAGE_COUNT);
 
+            // Получаем случайные фразы
+            const { data: phrases } = await this.supabase
+                .from('phrases')
+                .select('phrase')
+                .eq('chat_id', message.chat.id)
+                .order('RANDOM()')
+                .limit(3);
+
+            const selectedPhrases = phrases?.map(p => p.phrase) || [];
             const context = recentMessages?.map(m => m.text).join('\n') || '';
             const basePhrase = selectedPhrases.join('. ');
 
             // Если нет фраз для генерации, возвращаем заглушку
             if (!basePhrase) return "Гусь молчит...";
 
-            // Генерируем ответ
+            // Генерируем ответ с учетом кармы
             return await this.gemini.generateContinuation(
                 basePhrase,
                 context,

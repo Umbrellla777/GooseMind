@@ -2,8 +2,8 @@ const { Telegraf, session } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const { MessageHandler } = require('./handlers/messageHandler');
 const { MessageGenerator } = require('./services/messageGenerator');
+const { GeminiService } = require('./services/geminiService');
 const config = require('./config');
-const geminiService = require('./services/geminiService');
 
 // Настройки для бота
 const botOptions = {
@@ -20,6 +20,7 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const messageHandler = new MessageHandler(supabase);
 const messageGenerator = new MessageGenerator(supabase);
+const geminiService = new GeminiService();
 
 // Хранение состояния ожидания ввода вероятности
 let awaitingProbability = false;

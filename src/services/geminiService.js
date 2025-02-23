@@ -132,21 +132,15 @@ ${prompt.rules}
                 `ПОСЛЕДНЕЕ СООБЩЕНИЕ: "${lastMessage}"`
             );
 
-            const chatSession = this.model.startChat({
-                generationConfig: this.generationConfig,
-                history: [
-                    {
-                        role: "user",
-                        parts: [{ text: actualPrompt }]
-                    },
-                    {
-                        role: "model",
-                        parts: [{ text: prompt.example }]
-                    }
-                ]
+            // Отправляем только промпт, без примера
+            const result = await this.model.generateContent({
+                contents: [{ 
+                    role: "user",
+                    parts: [{ text: actualPrompt }]
+                }],
+                generationConfig: this.generationConfig
             });
 
-            const result = await chatSession.sendMessage(lastMessage);
             return result.response.text();
 
         } catch (error) {

@@ -239,6 +239,10 @@ bot.on('text', async (ctx) => {
                 return ctx.reply('Только @Umbrellla777 может использовать эту команду');
             }
 
+            // Получаем текущую карму чата
+            const currentKarma = await getChatKarma(ctx.chat.id);
+            const characteristic = getKarmaCharacteristic(currentKarma);
+
             const keyboard = {
                 inline_keyboard: [
                     [
@@ -257,7 +261,8 @@ bot.on('text', async (ctx) => {
             await ctx.reply(
                 `Текущие настройки Полуумного Гуся:\n` +
                 `Вероятность ответа: ${config.RESPONSE_PROBABILITY}%\n` +
-                `Вероятность реакции: ${config.REACTION_PROBABILITY}%`,
+                `Вероятность реакции: ${config.REACTION_PROBABILITY}%\n` +
+                `Карма чата: ${currentKarma} — ${characteristic}`,
                 { reply_markup: keyboard }
             );
             return;
